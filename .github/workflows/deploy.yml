@@ -29,6 +29,9 @@ jobs:
           mkdir -p _site
           cp pomodoro.html _site/index.html
           cp pomodoro.html _site/pomodoro.html
+          cp manifest.webmanifest _site/manifest.webmanifest
+          cp assets/icons/favicon.ico _site/favicon.ico
+          cp -r assets _site/assets
           cp -r css _site/css
           cp -r js _site/js
 
