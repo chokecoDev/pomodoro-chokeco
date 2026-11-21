@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pomodoro Pro — Enfoque con Control Manual</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fuente Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    /* Transición suave para el anillo de progreso SVG */
+    .progress-ring-circle {
+      transition: stroke-dashoffset 0.25s linear, stroke 0.35s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+    /* Scrollbar sutil en modo oscuro */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #09090b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #27272a;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3f3f46;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased min-h-screen flex flex-col selection:bg-rose-500/30 selection:text-rose-200">
+
+  <!-- Contenedor de notificaciones Toast -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none px-2 sm:px-0"></div>
+
+  <!-- Barra de navegación superior -->
+  <header class="sticky top-0 z-30 backdrop-blur-md bg-zinc-950/85 border-b border-zinc-800/80">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <!-- Logo / Título -->
+      <div class="flex items-center gap-2.5">
+        <div id="brand-dot" class="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 transition-colors">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <circle cx="12" cy="13" r="8" />
+            <path stroke-linecap="round" d="M12 9v4l2.5 1.5M9.5 3h5M12 3v2" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-sm sm:text-base font-bold tracking-tight text-zinc-100 leading-none">Pomodoro Pro</h1>
+          <p class="text-[11px] text-zinc-400 mt-0.5 hidden sm:block">Control manual &amp; histórico exacto</p>
+        </div>
+      </div>
+
+      <!-- Pestañas de navegación -->
+      <nav class="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800" aria-label="Navegación principal">
+        <button id="tab-timer" onclick="switchTab('timer')" class="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-zinc-800 text-zinc-100 shadow-sm">
+          Temporizador
+        </button>
+        <button id="tab-history" onclick="switchTab('history')" class="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5">
+          Histórico
+          <span id="history-badge" class="px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-zinc-800 text-zinc-300">0</span>
+        </button>
+      </nav>
+
+      <!-- Control de sonido -->
+      <button id="sound-toggle-btn" onclick="toggleSound()" title="Activar/Silenciar alarmas" class="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition-colors">
+        <svg id="icon-sound-on" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
+        </svg>
+        <svg id="icon-sound-off" class="w-4 h-4 hidden text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Contenido principal -->
+  <main class="flex-1 w-full max-w-4xl mx-auto px-4 py-6 sm:py-8">
+
+    <!-- ==================== VISTA 1: TEMPORIZADOR ==================== -->
+    <section id="view-timer" class="space-y-6">
+
+      <!-- SUBVISTA A: CONFIGURACIÓN DE CARGA (Antes de iniciar) -->
+      <div id="setup-panel" class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 sm:p-7 shadow-xl">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-zinc-800/80">
+          <div>
+            <h2 class="text-lg sm:text-xl font-bold text-zinc-100">Configurar nueva carga</h2>
+            <p class="text-xs sm:text-sm text-zinc-400 mt-0.5">Define tus bloques antes de preparar el temporizador. Nada arrancará solo.</p>
+          </div>
+          <!-- Interruptor Modo Prueba -->
+          <label class="inline-flex items-center gap-2.5 cursor-pointer select-none bg-zinc-950/70 border border-zinc-800 px-3 py-2 rounded-xl self-start sm:self-auto">
+            <input type="checkbox" id="cfg-test-mode" class="sr-only peer" onchange="onTestModeChange()" />
+            <div class="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all relative peer-checked:bg-amber-500"></div>
+            <span class="text-xs font-medium text-zinc-300">Modo prueba <span class="text-zinc-500">(seg)</span></span>
+          </label>
+        </div>
+
+        <!-- Cantidad de Pomodoros -->
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-2">
+            <label for="cfg-count" class="text-sm font-medium text-zinc-200">Cantidad de Pomodoros en la carga</label>
+            <span id="cfg-count-display" class="text-sm font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 rounded-lg">4 bloques</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <button type="button" onclick="adjustCount(-1)" class="w-10 h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-lg flex items-center justify-center transition-colors shrink-0">−</button>
+            <input type="range" id="cfg-count" min="1" max="12" value="4" oninput="syncCountDisplay()" class="w-full accent-rose-500 cursor-pointer h-2 bg-zinc-800 rounded-lg" />
+            <button type="button" onclick="adjustCount(1)" class="w-10 h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-lg flex items-center justify-center transition-colors shrink-0">+</button>
+          </div>
+        </div>
+
+        <!-- Duraciones configurables -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6">
+          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
+            <label for="cfg-pomo" class="block text-xs font-medium text-zinc-400 mb-1.5">Pomodoro (<span class="unit-label">min</span>)</label>
+            <input type="number" id="cfg-pomo" min="1" max="180" value="25" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-rose-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
+            <label for="cfg-short" class="block text-xs font-medium text-zinc-400 mb-1.5">Descanso corto (<span class="unit-label">min</span>)</label>
+            <input type="number" id="cfg-short" min="1" max="60" value="5" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-emerald-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
+            <label for="cfg-long" class="block text-xs font-medium text-zinc-400 mb-1.5">Descanso largo (<span class="unit-label">min</span>)</label>
+            <input type="number" id="cfg-long" min="1" max="90" value="15" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-emerald-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
+            <label for="cfg-long-every" class="block text-xs font-medium text-zinc-400 mb-1.5">Largo cada (bloques)</label>
+            <input type="number" id="cfg-long-every" min="2" max="12" value="4" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-zinc-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          </div>
+        </div>
+
+        <!-- Etiqueta / Categoría -->
+        <div class="mt-6">
+          <label for="cfg-tag" class="block text-sm font-medium text-zinc-200 mb-2">Etiqueta o categoría</label>
+          <div class="flex flex-wrap gap-2 mb-3" id="quick-tags">
+            <button type="button" onclick="selectTag('Trabajo')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Trabajo</button>
+            <button type="button" onclick="selectTag('Estudio')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Estudio</button>
+            <button type="button" onclick="selectTag('Código')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Código</button>
+            <button type="button" onclick="selectTag('Lectura')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Lectura</button>
+            <button type="button" onclick="selectTag('Idiomas')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Idiomas</button>
+          </div>
+          <input type="text" id="cfg-tag" value="Trabajo" maxlength="40" placeholder="Escribe una etiqueta personalizada..." class="w-full bg-zinc-950/70 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500" />
+        </div>
+
+        <!-- Botón Preparar Carga -->
+        <div class="mt-7 pt-5 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p id="setup-summary" class="text-xs text-zinc-400 text-center sm:text-left">
+            4 pomodoros de 25 min · Descansos de 5 / 15 min
+          </p>
+          <button type="button" onclick="prepareBatch()" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-400 active:scale-[0.99] text-white font-semibold text-sm shadow-lg shadow-rose-500/20 transition-all flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Preparar carga
+          </button>
+        </div>
+      </div>
+
+      <!-- SUBVISTA B: TEMPORIZADOR ACTIVO / EN ESPERA -->
+      <div id="active-panel" class="hidden bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 sm:p-8 shadow-xl transition-colors duration-300">
+        <!-- Encabezado de estado y metadatos -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div class="flex items-center gap-2.5">
+            <span id="status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30">
+              <span id="status-pulse" class="w-2 h-2 rounded-full bg-rose-400"></span>
+              <span id="status-text">Listo para Pomodoro 1 / 4</span>
+            </span>
+            <span id="active-tag-badge" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/70">
+              Trabajo
+            </span>
+            <span id="test-mode-indicator" class="hidden px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              Prueba (s)
+            </span>
+          </div>
+
+          <button type="button" id="btn-cancel-batch" onclick="openCancelBatchModal()" class="text-xs font-medium text-zinc-400 hover:text-zinc-200 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors">
+            Cambiar carga
+          </button>
+        </div>
+
+        <!-- Anillo de progreso circular y reloj -->
+        <div class="flex flex-col items-center justify-center my-4 sm:my-6">
+          <div class="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+            <svg class="w-full h-full" viewBox="0 0 260 260">
+              <!-- Fondo del anillo -->
+              <circle cx="130" cy="130" r="114" fill="none" stroke="#27272a" stroke-width="10" />
+              <!-- Progreso -->
+              <circle id="progress-ring" class="progress-ring-circle" cx="130" cy="130" r="114" fill="none" stroke="#f43f5e" stroke-width="10" stroke-linecap="round" stroke-dasharray="716.28" stroke-dashoffset="0" />
+            </svg>
+            <!-- Texto central -->
+            <div class="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
+              <span id="phase-subtitle" class="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-1">Enfoque</span>
+              <div id="timer-display" class="text-5xl sm:text-6xl font-mono font-bold tracking-tight text-zinc-50 tabular-nums">
+                25:00
+              </div>
+              <div id="pause-meta" class="mt-2 text-xs font-medium text-amber-400 min-h-[18px]"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Indicador visual de bloques de la carga -->
+        <div class="flex flex-col items-center gap-2 mb-7">
+          <div id="batch-blocks-indicator" class="flex items-center justify-center flex-wrap gap-2"></div>
+          <p id="batch-progress-label" class="text-xs text-zinc-400">Bloque 1 de 4</p>
+        </div>
+
+        <!-- Controles principales (cambian según el estado) -->
+        <div id="timer-controls" class="flex flex-wrap items-center justify-center gap-3">
+          <!-- Inyectados dinámicamente según la máquina de estados -->
+        </div>
+      </div>
+
+      <!-- SUBVISTA C: CARGA COMPLETADA -->
+      <div id="completed-panel" class="hidden bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-6 sm:p-10 text-center shadow-xl">
+        <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4">
+          <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h2 class="text-2xl font-bold text-zinc-100">¡Carga completada!</h2>
+        <p id="completed-summary" class="text-sm text-zinc-400 mt-2 max-w-md mx-auto">
+          Has finalizado todos los bloques planificados y tu histórico ya está guardado con fecha y hora exacta.
+        </p>
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button type="button" onclick="resetToSetup()" class="px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-sm shadow-lg shadow-rose-500/20 transition-all">
+            Configurar nueva carga
+          </button>
+          <button type="button" onclick="switchTab('history')" class="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors">
+            Ver histórico
+          </button>
+        </div>
+      </div>
+
+      <!-- Resumen rápido del día (siempre visible debajo del temporizador) -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div class="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <p class="text-xs text-zinc-400 font-medium">Pomodoros hoy</p>
+            <p id="today-pomos-count" class="text-2xl font-bold font-mono text-zinc-100 mt-1">0</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+        </div>
+        <div class="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <p class="text-xs text-zinc-400 font-medium">Enfoque efectivo hoy</p>
+            <p id="today-focus-time" class="text-2xl font-bold font-mono text-zinc-100 mt-1">0m</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9" />
+              <path stroke-linecap="round" d="M12 7v5l3 2" />
+            </svg>
+          </div>
+        </div>
+        <div class="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <p class="text-xs text-zinc-400 font-medium">Descansos hoy</p>
+            <p id="today-breaks-count" class="text-2xl font-bold font-mono text-zinc-100 mt-1">0</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== VISTA 2: HISTÓRICO ==================== -->
+    <section id="view-history" class="hidden space-y-5">
+      <!-- Encabezado y botones de exportación -->
+      <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg sm:text-xl font-bold text-zinc-100">Histórico detallado</h2>
+          <p class="text-xs sm:text-sm text-zinc-400 mt-0.5">Registro exacto de fecha, hora de inicio/fin, descansos y pausas.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="exportHistory('json')" class="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-colors flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            JSON
+          </button>
+          <button type="button" onclick="exportHistory('csv')" class="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-colors flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            CSV
+          </button>
+          <button type="button" onclick="openClearHistoryModal()" class="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition-colors">
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="flex flex-col sm:flex-row gap-3">
+        <div class="flex-1">
+          <label for="filter-type" class="sr-only">Filtrar por tipo</label>
+          <select id="filter-type" onchange="renderHistory()" class="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-200">
+            <option value="all">Todos los bloques</option>
+            <option value="pomodoro">Solo Pomodoros</option>
+            <option value="short_break">Solo Descansos cortos</option>
+            <option value="long_break">Solo Descansos largos</option>
+          </select>
+        </div>
+        <div class="flex-1">
+          <label for="filter-tag" class="sr-only">Filtrar por etiqueta</label>
+          <select id="filter-tag" onchange="renderHistory()" class="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-200">
+            <option value="all">Todas las etiquetas</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Lista de registros -->
+      <div id="history-list" class="space-y-3">
+        <!-- Renderizado dinámicamente -->
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== MODALES PERSONALIZADOS ==================== -->
+
+  <!-- Modal: Detener bloque en curso -->
+  <div id="modal-stop" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-zinc-100">¿Detener este bloque?</h3>
+      <p id="modal-stop-desc" class="text-sm text-zinc-400 mt-2">
+        Puedes guardar el tiempo transcurrido hasta ahora como un bloque incompleto en tu histórico, o descartarlo por completo.
+      </p>
+      <div class="mt-6 flex flex-col gap-2.5">
+        <button type="button" onclick="confirmStopBlock('incomplete')" class="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors">
+          Guardar como incompleto
+        </button>
+        <button type="button" onclick="confirmStopBlock('discard')" class="w-full py-2.5 px-4 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 font-semibold text-sm transition-colors">
+          Descartar bloque (no guardar)
+        </button>
+        <button type="button" onclick="closeStopModal()" class="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors">
+          Continuar bloque
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar cambio de carga -->
+  <div id="modal-cancel-batch" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-zinc-100">¿Cambiar configuración de carga?</h3>
+      <p class="text-sm text-zinc-400 mt-2">
+        Volverás a la pantalla de configuración. Los bloques que ya hayas completado permanecerán guardados en tu histórico.
+      </p>
+      <div class="mt-6 flex items-center justify-end gap-2.5">
+        <button type="button" onclick="closeModal('modal-cancel-batch')" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors">
+          Cancelar
+        </button>
+        <button type="button" onclick="confirmCancelBatch()" class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-sm font-semibold transition-colors">
+          Sí, cambiar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar limpiar histórico -->
+  <div id="modal-clear-history" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-zinc-100">¿Limpiar todo el histórico?</h3>
+      <p class="text-sm text-zinc-400 mt-2">
+        Esta acción eliminará permanentemente todos los registros guardados en este navegador. Considera exportar en JSON o CSV antes.
+      </p>
+      <div class="mt-6 flex items-center justify-end gap-2.5">
+        <button type="button" onclick="closeModal('modal-clear-history')" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors">
+          Cancelar
+        </button>
+        <button type="button" onclick="confirmClearHistory()" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors">
+          Eliminar todo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * =========================================================================
+     * POMODORO PRO — LÓGICA PRINCIPAL, MÁQUINA DE ESTADOS Y PERSISTENCIA
+     * =========================================================================
+     */
+
+    // Claves de almacenamiento en localStorage
+    const STORAGE_KEY_STATE = 'pomodoro_pro_state_v1';
+    const STORAGE_KEY_HISTORY = 'pomodoro_pro_history_v1';
+    const STORAGE_KEY_PREFS = 'pomodoro_pro_prefs_v1';
+
+    // Constante del perímetro del anillo SVG (2 * PI * 114)
+    const RING_CIRCUMFERENCE = 2 * Math.PI * 114;
+
+    // Estados posibles de la máquina de estados
+    const PHASE = {
+      SETUP: 'SETUP',
+      READY_POMODORO: 'READY_POMODORO',
+      RUNNING_POMODORO: 'RUNNING_POMODORO',
+      PAUSED_POMODORO: 'PAUSED_POMODORO',
+      READY_BREAK: 'READY_BREAK',
+      RUNNING_BREAK: 'RUNNING_BREAK',
+      PAUSED_BREAK: 'PAUSED_BREAK',
+      BATCH_COMPLETED: 'BATCH_COMPLETED',
+    };
+
+    // Estado por defecto de la aplicación
+    let appState = {
+      phase: PHASE.SETUP,
+      config: {
+        totalPomodoros: 4,
+        pomodoroVal: 25,
+        shortBreakVal: 5,
+        longBreakVal: 15,
+        longBreakInterval: 4,
+        testMode: false,
+        tag: 'Trabajo',
+      },
+      batchId: null,
+      currentPomodoro: 1, // 1..totalPomodoros
+      completedPomodorosInBatch: 0,
+      targetEndTime: null,       // Timestamp en ms (Date.now()) cuando termina el bloque en curso
+      remainingMsAtPause: null,  // Ms restantes al momento de pausar
+      activeBlock: null,         // Registro en construcción mientras el bloque está activo o pausado
+    };
+
+    // Historial de registros guardados
+    let historyLogs = [];
+
+    // Preferencias de UI (sonido)
+    let userPrefs = {
+      soundEnabled: true,
+    };
+
+    // Control de intervalo y modal de detención
+    let tickInterval = null;
+    let isStopModalOpen = false;
+    let audioCtx = null;
+
+    // =========================================================================
+    // UTILIDADES DE TIEMPO, FORMATO E IDs
+    // =========================================================================
+
+    function generateId(prefix) {
+      return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    /** Convierte segundos en formato MM:SS o HH:MM:SS */
+    function formatTimer(totalSeconds) {
+      const safe = Math.max(0, Math.ceil(totalSeconds));
+      const hrs = Math.floor(safe / 3600);
+      const mins = Math.floor((safe % 3600) / 60);
+      const secs = safe % 60;
+      const pad = (n) => String(n).padStart(2, '0');
+      if (hrs > 0) return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+      return `${pad(mins)}:${pad(secs)}`;
+    }
+
+    /** Formatea una duración en segundos de manera legible (ej. "25m 0s", "1h 15m") */
+    function formatDurationHuman(seconds) {
+      const s = Math.max(0, Math.round(seconds));
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hrs > 0) return `${hrs}h ${mins}m`;
+      if (mins > 0) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+      return `${secs}s`;
+    }
+
+    /** Formatea fecha ISO a DD/MM/YYYY */
+    function formatDateLocal(isoString) {
+      const d = new Date(isoString);
+      return d.toLocaleDateString('es-PE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    }
+
+    /** Formatea fecha ISO a HH:MM:SS exacto */
+    function formatTimeLocal(isoString) {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString('es-PE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    }
+
+    /** Verifica si un timestamp ISO corresponde al día de hoy (hora local) */
+    function isToday(isoString) {
+      const d = new Date(isoString);
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+
+    /** Calcula la duración en segundos de un tipo de bloque según configuración */
+    function getPlannedDurationSec(type) {
+      const mult = appState.config.testMode ? 1 : 60;
+      if (type === 'pomodoro') return appState.config.pomodoroVal * mult;
+      if (type === 'long_break') return appState.config.longBreakVal * mult;
+      return appState.config.shortBreakVal * mult;
+    }
+
+    /** Determina si el descanso actual corresponde a descanso largo o corto */
+    function getCurrentBreakType() {
+      const interval = Math.max(2, appState.config.longBreakInterval);
+      return appState.currentPomodoro % interval === 0 ? 'long_break' : 'short_break';
+    }
+
+    /** Calcula el total de segundos pausados a partir del arreglo pauses */
+    function calculateTotalPausedSec(pauses) {
+      if (!Array.isArray(pauses) || pauses.length === 0) return 0;
+      let totalMs = 0;
+      for (const p of pauses) {
+        if (p.paused_at && p.resumed_at) {
+          const diff = new Date(p.resumed_at).getTime() - new Date(p.paused_at).getTime();
+          if (diff > 0) totalMs += diff;
+        }
+      }
+      return Math.round(totalMs / 1000);
+    }
+
+    // =========================================================================
+    // WEB AUDIO API — ALARMAS SONORAS SIN DEPENDENCIAS EXTERNAS
+    // =========================================================================
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+      return audioCtx;
+    }
+
+    /** Reproduce una nota suave con envolvente ADSR básica */
+    function playTone(ctx, freq, startTime, duration, type = 'sine', peakGain = 0.22) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.exponentialRampToValueAtTime(peakGain, startTime + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.02);
+    }
+
+    /** Alarma al finalizar un Pomodoro (acorde ascendente cálido) */
+    function playPomodoroCompleteSound() {
+      if (!userPrefs.soundEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        playTone(ctx, 523.25, now, 0.45, 'triangle', 0.22);       // C5
+        playTone(ctx, 659.25, now + 0.16, 0.45, 'triangle', 0.22); // E5
+        playTone(ctx, 783.99, now + 0.32, 0.75, 'sine', 0.25);     // G5
+        playTone(ctx, 1046.5, now + 0.48, 0.85, 'sine', 0.18);     // C6
+      } catch (e) {
+        console.warn('No se pudo reproducir el sonido de Pomodoro:', e);
+      }
+    }
+
+    /** Alarma al finalizar un Descanso (doble campana nítida distinta) */
+    function playBreakCompleteSound() {
+      if (!userPrefs.soundEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        playTone(ctx, 880.0, now, 0.35, 'sine', 0.2);        // A5
+        playTone(ctx, 659.25, now + 0.22, 0.45, 'sine', 0.2); // E5
+        playTone(ctx, 880.0, now + 0.52, 0.6, 'sine', 0.22);  // A5
+      } catch (e) {
+        console.warn('No se pudo reproducir el sonido de Descanso:', e);
+      }
+    }
+
+    function toggleSound() {
+      userPrefs.soundEnabled = !userPrefs.soundEnabled;
+      savePrefs();
+      renderSoundIcon();
+      if (userPrefs.soundEnabled) {
+        // Desbloquea el contexto de audio y da un pequeño tono de confirmación
+        const ctx = getAudioContext();
+        if (ctx) playTone(ctx, 660, ctx.currentTime, 0.15, 'sine', 0.12);
+        showToast('Alarmas sonoras activadas', 'info');
+      } else {
+        showToast('Alarmas sonoras silenciadas', 'info');
+      }
+    }
+
+    function renderSoundIcon() {
+      document.getElementById('icon-sound-on').classList.toggle('hidden', !userPrefs.soundEnabled);
+      document.getElementById('icon-sound-off').classList.toggle('hidden', userPrefs.soundEnabled);
+    }
+
+    // =========================================================================
+    // PERSISTENCIA EN LOCALSTORAGE
+    // =========================================================================
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(appState));
+      } catch (e) {
+        console.error('Error guardando estado:', e);
+      }
+    }
+
+    function saveHistory() {
+      try {
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(historyLogs));
+      } catch (e) {
+        console.error('Error guardando histórico:', e);
+      }
+    }
+
+    function savePrefs() {
+      try {
+        localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(userPrefs));
+      } catch (e) {
+        console.error('Error guardando preferencias:', e);
+      }
+    }
+
+    function loadAllData() {
+      try {
+        const rawPrefs = localStorage.getItem(STORAGE_KEY_PREFS);
+        if (rawPrefs) userPrefs = { ...userPrefs, ...JSON.parse(rawPrefs) };
+
+        const rawHistory = localStorage.getItem(STORAGE_KEY_HISTORY);
+        if (rawHistory) historyLogs = JSON.parse(rawHistory) || [];
+
+        const rawState = localStorage.getItem(STORAGE_KEY_STATE);
+        if (rawState) {
+          const parsed = JSON.parse(rawState);
+          if (parsed && parsed.phase) {
+            appState = { ...appState, ...parsed };
+          }
+        }
+      } catch (e) {
+        console.error('Error cargando datos de localStorage:', e);
+      }
+    }
+
+    // =========================================================================
+    // NOTIFICACIONES TOAST Y MODALES
+    // =========================================================================
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const colors = {
+        info: 'bg-zinc-900 border-zinc-700 text-zinc-100',
+        success: 'bg-emerald-950/95 border-emerald-500/40 text-emerald-200',
+        warning: 'bg-amber-950/95 border-amber-500/40 text-amber-200',
+        error: 'bg-rose-950/95 border-rose-500/40 text-rose-200',
+      };
+      el.className = `pointer-events-auto px-4 py-3 rounded-xl border text-xs sm:text-sm font-medium shadow-xl transition-all duration-300 translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+      el.textContent = message;
+      container.appendChild(el);
+
+      requestAnimationFrame(() => {
+        el.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        el.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    // =========================================================================
+    // NAVEGACIÓN ENTRE PESTAÑAS
+    // =========================================================================
+
+    function switchTab(tab) {
+      const timerView = document.getElementById('view-timer');
+      const historyView = document.getElementById('view-history');
+      const tabTimer = document.getElementById('tab-timer');
+      const tabHistory = document.getElementById('tab-history');
+
+      if (tab === 'timer') {
+        timerView.classList.remove('hidden');
+        historyView.classList.add('hidden');
+        tabTimer.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-zinc-800 text-zinc-100 shadow-sm';
+        tabHistory.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5';
+      } else {
+        timerView.classList.add('hidden');
+        historyView.classList.remove('hidden');
+        tabHistory.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-zinc-800 text-zinc-100 shadow-sm flex items-center gap-1.5';
+        tabTimer.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200';
+        populateTagFilter();
+        renderHistory();
+      }
+    }
+
+    // =========================================================================
+    // CONFIGURACIÓN DE LA CARGA (SETUP)
+    // =========================================================================
+
+    function syncSetupInputsFromConfig() {
+      const c = appState.config;
+      document.getElementById('cfg-count').value = c.totalPomodoros;
+      document.getElementById('cfg-pomo').value = c.pomodoroVal;
+      document.getElementById('cfg-short').value = c.shortBreakVal;
+      document.getElementById('cfg-long').value = c.longBreakVal;
+      document.getElementById('cfg-long-every').value = c.longBreakInterval;
+      document.getElementById('cfg-test-mode').checked = c.testMode;
+      document.getElementById('cfg-tag').value = c.tag;
+      updateUnitLabels();
+      syncCountDisplay();
+      highlightSelectedTagChip(c.tag);
+    }
+
+    function adjustCount(delta) {
+      const input = document.getElementById('cfg-count');
+      const next = Math.min(12, Math.max(1, parseInt(input.value, 10) + delta));
+      input.value = next;
+      syncCountDisplay();
+    }
+
+    function syncCountDisplay() {
+      const count = parseInt(document.getElementById('cfg-count').value, 10) || 4;
+      document.getElementById('cfg-count-display').textContent = `${count} ${count === 1 ? 'bloque' : 'bloques'}`;
+      updateSetupSummary();
+    }
+
+    function onTestModeChange() {
+      const isTest = document.getElementById('cfg-test-mode').checked;
+      // Valores cómodos por defecto al activar/desactivar modo prueba
+      if (isTest) {
+        document.getElementById('cfg-pomo').value = 5;
+        document.getElementById('cfg-short').value = 3;
+        document.getElementById('cfg-long').value = 6;
+      } else {
+        document.getElementById('cfg-pomo').value = 25;
+        document.getElementById('cfg-short').value = 5;
+        document.getElementById('cfg-long').value = 15;
+      }
+      updateUnitLabels();
+      updateSetupSummary();
+    }
+
+    function updateUnitLabels() {
+      const isTest = document.getElementById('cfg-test-mode').checked;
+      const label = isTest ? 'seg' : 'min';
+      document.querySelectorAll('.unit-label').forEach((el) => {
+        el.textContent = label;
+      });
+    }
+
+    function updateSetupSummary() {
+      const count = parseInt(document.getElementById('cfg-count').value, 10) || 4;
+      const pomo = parseInt(document.getElementById('cfg-pomo').value, 10) || 25;
+      const shortB = parseInt(document.getElementById('cfg-short').value, 10) || 5;
+      const longB = parseInt(document.getElementById('cfg-long').value, 10) || 15;
+      const unit = document.getElementById('cfg-test-mode').checked ? 'seg' : 'min';
+      document.getElementById('setup-summary').textContent =
+        `${count} ${count === 1 ? 'pomodoro' : 'pomodoros'} de ${pomo} ${unit} · Descansos de ${shortB} / ${longB} ${unit}`;
+    }
+
+    function selectTag(tag) {
+      document.getElementById('cfg-tag').value = tag;
+      highlightSelectedTagChip(tag);
+    }
+
+    function highlightSelectedTagChip(tag) {
+      document.querySelectorAll('.tag-chip').forEach((btn) => {
+        const isSelected = btn.textContent.trim().toLowerCase() === tag.trim().toLowerCase();
+        if (isSelected) {
+          btn.className = 'tag-chip px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/50 transition-colors';
+        } else {
+          btn.className = 'tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors';
+        }
+      });
+    }
+
+    /** Prepara la carga y pasa a READY_POMODORO sin arrancar el reloj */
+    function prepareBatch() {
+      // Desbloquea audio en interacción del usuario
+      getAudioContext();
+
+      const totalPomodoros = Math.min(12, Math.max(1, parseInt(document.getElementById('cfg-count').value, 10) || 4));
+      const pomodoroVal = Math.min(180, Math.max(1, parseInt(document.getElementById('cfg-pomo').value, 10) || 25));
+      const shortBreakVal = Math.min(60, Math.max(1, parseInt(document.getElementById('cfg-short').value, 10) || 5));
+      const longBreakVal = Math.min(90, Math.max(1, parseInt(document.getElementById('cfg-long').value, 10) || 15));
+      const longBreakInterval = Math.min(12, Math.max(2, parseInt(document.getElementById('cfg-long-every').value, 10) || 4));
+      const testMode = document.getElementById('cfg-test-mode').checked;
+      const rawTag = document.getElementById('cfg-tag').value.trim();
+      const tag = rawTag || 'Sin etiqueta';
+
+      appState = {
+        phase: PHASE.READY_POMODORO,
+        config: {
+          totalPomodoros,
+          pomodoroVal,
+          shortBreakVal,
+          longBreakVal,
+          longBreakInterval,
+          testMode,
+          tag,
+        },
+        batchId: generateId('batch'),
+        currentPomodoro: 1,
+        completedPomodorosInBatch: 0,
+        targetEndTime: null,
+        remainingMsAtPause: null,
+        activeBlock: null,
+      };
+
+      saveState();
+      renderApp();
+      showToast('Carga preparada. Presiona Iniciar cuando estés listo.', 'info');
+    }
+
+    // =========================================================================
+    // MÁQUINA DE ESTADOS — TRANSICIONES ESTRICTAMENTE MANUALES
+    // =========================================================================
+
+    /** Inicia manualmente el Pomodoro actual */
+    function startPomodoro() {
+      if (appState.phase !== PHASE.READY_POMODORO) return;
+      getAudioContext();
+
+      const durationSec = getPlannedDurationSec('pomodoro');
+      const nowIso = new Date().toISOString();
+
+      appState.activeBlock = {
+        id: generateId('log'),
+        batch_id: appState.batchId,
+        type: 'pomodoro',
+        tag: appState.config.tag,
+        planned_duration_sec: durationSec,
+        started_at: nowIso,
+        ended_at: null,
+        pauses: [],
+        total_paused_sec: 0,
+        status: 'in_progress',
+      };
+
+      appState.targetEndTime = Date.now() + durationSec * 1000;
+      appState.remainingMsAtPause = null;
+      appState.phase = PHASE.RUNNING_POMODORO;
+
+      saveState();
+      renderApp();
+      startTicking();
+    }
+
+    /** Inicia manualmente el Descanso actual (corto o largo) */
+    function startBreak() {
+      if (appState.phase !== PHASE.READY_BREAK) return;
+      getAudioContext();
+
+      const breakType = getCurrentBreakType();
+      const durationSec = getPlannedDurationSec(breakType);
+      const nowIso = new Date().toISOString();
+
+      appState.activeBlock = {
+        id: generateId('log'),
+        batch_id: appState.batchId,
+        type: breakType,
+        tag: appState.config.tag,
+        planned_duration_sec: durationSec,
+        started_at: nowIso,
+        ended_at: null,
+        pauses: [],
+        total_paused_sec: 0,
+        status: 'in_progress',
+      };
+
+      appState.targetEndTime = Date.now() + durationSec * 1000;
+      appState.remainingMsAtPause = null;
+      appState.phase = PHASE.RUNNING_BREAK;
+
+      saveState();
+      renderApp();
+      startTicking();
+    }
+
+    /** Salta el descanso en estado READY_BREAK y avanza manualmente */
+    function skipBreak() {
+      if (appState.phase !== PHASE.READY_BREAK) return;
+      advanceAfterBreak();
+      showToast('Descanso saltado', 'info');
+    }
+
+    /** Pausa el bloque en curso (Pomodoro o Descanso) registrando paused_at exacto */
+    function pauseBlock() {
+      if (appState.phase !== PHASE.RUNNING_POMODORO && appState.phase !== PHASE.RUNNING_BREAK) return;
+
+      const nowMs = Date.now();
+      appState.remainingMsAtPause = Math.max(0, appState.targetEndTime - nowMs);
+      appState.targetEndTime = null;
+
+      if (appState.activeBlock) {
+        appState.activeBlock.pauses.push({
+          paused_at: new Date(nowMs).toISOString(),
+          resumed_at: null,
+        });
+      }
+
+      appState.phase = appState.phase === PHASE.RUNNING_POMODORO
+        ? PHASE.PAUSED_POMODORO
+        : PHASE.PAUSED_BREAK;
+
+      stopTicking();
+      saveState();
+      renderApp();
+    }
+
+    /** Reanuda un bloque pausado cerrando la pausa con resumed_at y recalculando targetEndTime */
+    function resumeBlock() {
+      if (appState.phase !== PHASE.PAUSED_POMODORO && appState.phase !== PHASE.PAUSED_BREAK) return;
+      getAudioContext();
+
+      const nowMs = Date.now();
+      if (appState.activeBlock && appState.activeBlock.pauses.length > 0) {
+        const lastPause = appState.activeBlock.pauses[appState.activeBlock.pauses.length - 1];
+        if (lastPause && !lastPause.resumed_at) {
+          lastPause.resumed_at = new Date(nowMs).toISOString();
+        }
+      }
+
+      appState.targetEndTime = nowMs + (appState.remainingMsAtPause || 0);
+      appState.remainingMsAtPause = null;
+      appState.phase = appState.phase === PHASE.PAUSED_POMODORO
+        ? PHASE.RUNNING_POMODORO
+        : PHASE.RUNNING_BREAK;
+
+      saveState();
+      renderApp();
+      startTicking();
+    }
+
+    /** Finaliza un bloque al llegar a 00:00 (con hora exacta de fin) */
+    function completeCurrentBlock(exactEndTimeMs) {
+      stopTicking();
+
+      const endMs = exactEndTimeMs || Date.now();
+      const wasPomodoro = appState.phase === PHASE.RUNNING_POMODORO;
+
+      if (appState.activeBlock) {
+        const record = {
+          ...appState.activeBlock,
+          ended_at: new Date(endMs).toISOString(),
+          total_paused_sec: calculateTotalPausedSec(appState.activeBlock.pauses),
+          status: 'completed',
+        };
+        historyLogs.unshift(record);
+        saveHistory();
+      }
+
+      appState.activeBlock = null;
+      appState.targetEndTime = null;
+      appState.remainingMsAtPause = null;
+
+      if (wasPomodoro) {
+        appState.completedPomodorosInBatch += 1;
+        playPomodoroCompleteSound();
+        appState.phase = PHASE.READY_BREAK;
+        saveState();
+        renderApp();
+        renderTodaySummary();
+        showToast('¡Pomodoro completado! Listo para iniciar descanso.', 'success');
+      } else {
+        playBreakCompleteSound();
+        advanceAfterBreak();
+        renderTodaySummary();
+        showToast('¡Descanso completado! Listo para continuar.', 'success');
+      }
+    }
+
+    /** Transición después de terminar o saltar un descanso */
+    function advanceAfterBreak() {
+      if (appState.currentPomodoro >= appState.config.totalPomodoros) {
+        appState.phase = PHASE.BATCH_COMPLETED;
+      } else {
+        appState.currentPomodoro += 1;
+        appState.phase = PHASE.READY_POMODORO;
+      }
+      saveState();
+      renderApp();
+    }
+
+    // =========================================================================
+    // DETENER BLOQUE (MODAL: GUARDAR COMO INCOMPLETO O DESCARTAR)
+    // =========================================================================
+
+    function openStopModal() {
+      isStopModalOpen = true;
+      openModal('modal-stop');
+    }
+
+    function closeStopModal() {
+      isStopModalOpen = false;
+      closeModal('modal-stop');
+      // Si el reloj siguió corriendo y ya venció mientras el modal estaba abierto, procesar tick
+      if (appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.RUNNING_BREAK) {
+        onTick();
+      }
+    }
+
+    function confirmStopBlock(action) {
+      isStopModalOpen = false;
+      closeModal('modal-stop');
+      stopTicking();
+
+      const isPomodoro = appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.PAUSED_POMODORO;
+
+      if (action === 'incomplete' && appState.activeBlock) {
+        const nowIso = new Date().toISOString();
+        // Si estaba en pausa, cerramos esa última pausa con la hora de detención
+        if (appState.activeBlock.pauses.length > 0) {
+          const lastPause = appState.activeBlock.pauses[appState.activeBlock.pauses.length - 1];
+          if (lastPause && !lastPause.resumed_at) {
+            lastPause.resumed_at = nowIso;
+          }
+        }
+        const record = {
+          ...appState.activeBlock,
+          ended_at: nowIso,
+          total_paused_sec: calculateTotalPausedSec(appState.activeBlock.pauses),
+          status: 'incomplete',
+        };
+        historyLogs.unshift(record);
+        saveHistory();
+
+        appState.activeBlock = null;
+        appState.targetEndTime = null;
+        appState.remainingMsAtPause = null;
+
+        if (isPomodoro) {
+          appState.phase = PHASE.READY_BREAK;
+        } else {
+          advanceAfterBreak();
+          renderTodaySummary();
+          showToast('Descanso guardado como incompleto.', 'warning');
+          return;
+        }
+
+        saveState();
+        renderApp();
+        renderTodaySummary();
+        showToast('Bloque guardado como incompleto en el histórico.', 'warning');
+      } else {
+        // Descartar bloque: no se guarda nada y se vuelve al estado de espera del mismo bloque
+        appState.activeBlock = null;
+        appState.targetEndTime = null;
+        appState.remainingMsAtPause = null;
+        appState.phase = isPomodoro ? PHASE.READY_POMODORO : PHASE.READY_BREAK;
+        saveState();
+        renderApp();
+        showToast('Bloque descartado.', 'info');
+      }
+    }
+
+    // =========================================================================
+    // CAMBIAR CARGA / REINICIAR A SETUP
+    // =========================================================================
+
+    function openCancelBatchModal() {
+      openModal('modal-cancel-batch');
+    }
+
+    function confirmCancelBatch() {
+      closeModal('modal-cancel-batch');
+      resetToSetup();
+    }
+
+    function resetToSetup() {
+      stopTicking();
+      appState.phase = PHASE.SETUP;
+      appState.activeBlock = null;
+      appState.targetEndTime = null;
+      appState.remainingMsAtPause = null;
+      appState.batchId = null;
+      appState.currentPomodoro = 1;
+      appState.completedPomodorosInBatch = 0;
+      saveState();
+      syncSetupInputsFromConfig();
+      renderApp();
+    }
+
+    // =========================================================================
+    // MOTOR DE RELOJ BASADO EN DATE.NOW() (SIN DESFASES EN SEGUNDO PLANO)
+    // =========================================================================
+
+    function startTicking() {
+      stopTicking();
+      onTick();
+      tickInterval = setInterval(onTick, 200);
+    }
+
+    function stopTicking() {
+      if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+      }
+    }
+
+    function onTick() {
+      if (isStopModalOpen) return;
+      if (appState.phase !== PHASE.RUNNING_POMODORO && appState.phase !== PHASE.RUNNING_BREAK) {
+        stopTicking();
+        return;
+      }
+      if (!appState.targetEndTime) return;
+
+      const now = Date.now();
+      const remainingMs = appState.targetEndTime - now;
+
+      if (remainingMs <= 0) {
+        completeCurrentBlock(appState.targetEndTime);
+        return;
+      }
+
+      updateTimerVisuals(remainingMs);
+    }
+
+    /** Actualiza el texto del reloj, anillo SVG y document.title */
+    function updateTimerVisuals(remainingMs) {
+      const totalPlannedSec = appState.activeBlock
+        ? appState.activeBlock.planned_duration_sec
+        : getPlannedDurationSec(
+            appState.phase === PHASE.READY_BREAK ? getCurrentBreakType() : 'pomodoro'
+          );
+
+      const remainingSec = Math.max(0, remainingMs / 1000);
+      const formatted = formatTimer(remainingSec);
+
+      document.getElementById('timer-display').textContent = formatted;
+
+      // Progreso del anillo (0 = lleno al inicio, RING_CIRCUMFERENCE = vacío al final)
+      const ratio = totalPlannedSec > 0 ? Math.min(1, Math.max(0, remainingSec / totalPlannedSec)) : 0;
+      const offset = RING_CIRCUMFERENCE * (1 - ratio);
+      document.getElementById('progress-ring').style.strokeDashoffset = offset;
+
+      // Actualizar título de la pestaña
+      updateDocumentTitle(formatted);
+    }
+
+    function updateDocumentTitle(formattedTime) {
+      switch (appState.phase) {
+        case PHASE.RUNNING_POMODORO:
+          document.title = `[${formattedTime}] Enfoque (${appState.currentPomodoro}/${appState.config.totalPomodoros}) · Pomodoro Pro`;
+          break;
+        case PHASE.PAUSED_POMODORO:
+          document.title = `[PAUSA ${formattedTime}] Enfoque · Pomodoro Pro`;
+          break;
+        case PHASE.RUNNING_BREAK:
+          document.title = `[${formattedTime}] Descanso · Pomodoro Pro`;
+          break;
+        case PHASE.PAUSED_BREAK:
+          document.title = `[PAUSA ${formattedTime}] Descanso · Pomodoro Pro`;
+          break;
+        case PHASE.READY_POMODORO:
+          document.title = `Listo: Pomodoro ${appState.currentPomodoro}/${appState.config.totalPomodoros} · Pomodoro Pro`;
+          break;
+        case PHASE.READY_BREAK:
+          document.title = `Listo: Descanso · Pomodoro Pro`;
+          break;
+        default:
+          document.title = 'Pomodoro Pro — Enfoque con Control Manual';
+      }
+    }
+
+    // =========================================================================
+    // RENDERIZADO DE LA INTERFAZ PRINCIPAL
+    // =========================================================================
+
+    function renderApp() {
+      const setupPanel = document.getElementById('setup-panel');
+      const activePanel = document.getElementById('active-panel');
+      const completedPanel = document.getElementById('completed-panel');
+
+      setupPanel.classList.add('hidden');
+      activePanel.classList.add('hidden');
+      completedPanel.classList.add('hidden');
+
+      if (appState.phase === PHASE.SETUP) {
+        setupPanel.classList.remove('hidden');
+        updateDocumentTitle('');
+        setBrandAccent('rose');
+        return;
+      }
+
+      if (appState.phase === PHASE.BATCH_COMPLETED) {
+        completedPanel.classList.remove('hidden');
+        document.getElementById('completed-summary').textContent =
+          `Completaste tu carga de ${appState.config.totalPomodoros} ${appState.config.totalPomodoros === 1 ? 'bloque' : 'bloques'} en "${appState.config.tag}". Todos los registros están guardados con hora exacta.`;
+        updateDocumentTitle('');
+        setBrandAccent('emerald');
+        return;
+      }
+
+      // Estados activos o en espera
+      activePanel.classList.remove('hidden');
+
+      const statusBadge = document.getElementById('status-badge');
+      const statusPulse = document.getElementById('status-pulse');
+      const statusText = document.getElementById('status-text');
+      const phaseSubtitle = document.getElementById('phase-subtitle');
+      const ring = document.getElementById('progress-ring');
+      const pauseMeta = document.getElementById('pause-meta');
+      const controls = document.getElementById('timer-controls');
+
+      document.getElementById('active-tag-badge').textContent = appState.config.tag;
+      document.getElementById('test-mode-indicator').classList.toggle('hidden', !appState.config.testMode);
+
+      const n = appState.currentPomodoro;
+      const total = appState.config.totalPomodoros;
+      const breakType = getCurrentBreakType();
+      const breakLabel = breakType === 'long_break' ? 'Descanso Largo' : 'Descanso Corto';
+
+      // Cantidad de pausas del bloque activo
+      const pausesCount = appState.activeBlock ? appState.activeBlock.pauses.length : 0;
+      pauseMeta.textContent = '';
+
+      if (appState.phase === PHASE.READY_POMODORO) {
+        setBrandAccent('rose');
+        ring.style.stroke = '#f43f5e';
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30';
+        statusPulse.className = 'w-2 h-2 rounded-full bg-rose-400';
+        statusText.textContent = `Listo para Pomodoro ${n} / ${total}`;
+        phaseSubtitle.textContent = 'En espera · Enfoque';
+
+        const plannedMs = getPlannedDurationSec('pomodoro') * 1000;
+        updateTimerVisuals(plannedMs);
+
+        controls.innerHTML = `
+          <button type="button" onclick="startPomodoro()" class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-rose-500 hover:bg-rose-400 active:scale-[0.99] text-white font-semibold text-sm sm:text-base shadow-lg shadow-rose-500/25 transition-all flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Iniciar Pomodoro
+          </button>
+        `;
+      } else if (appState.phase === PHASE.RUNNING_POMODORO) {
+        setBrandAccent('rose');
+        ring.style.stroke = '#f43f5e';
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-rose-500/15 text-rose-300 border-rose-500/40';
+        statusPulse.className = 'w-2 h-2 rounded-full bg-rose-400 animate-pulse';
+        statusText.textContent = `Pomodoro ${n} / ${total} en curso`;
+        phaseSubtitle.textContent = 'Enfoque activo';
+        if (pausesCount > 0) {
+          pauseMeta.textContent = `${pausesCount} ${pausesCount === 1 ? 'pausa registrada' : 'pausas registradas'}`;
+        }
+
+        const remMs = Math.max(0, (appState.targetEndTime || Date.now()) - Date.now());
+        updateTimerVisuals(remMs);
+
+        controls.innerHTML = `
+          <button type="button" onclick="pauseBlock()" class="px-6 py-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-semibold text-sm transition-all flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            Pausar
+          </button>
+          <button type="button" onclick="openStopModal()" class="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            Detener
+          </button>
+        `;
+      } else if (appState.phase === PHASE.PAUSED_POMODORO) {
+        setBrandAccent('amber');
+        ring.style.stroke = '#f59e0b';
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/40';
+        statusPulse.className = 'w-2 h-2 rounded-full bg-amber-400';
+        statusText.textContent = `Pomodoro ${n} / ${total} pausado`;
+        phaseSubtitle.textContent = 'En pausa';
+        pauseMeta.textContent = `Pausa #${pausesCount} activa`;
+
+        updateTimerVisuals(appState.remainingMsAtPause || 0);
+
+        controls.innerHTML = `
+          <button type="button" onclick="resumeBlock()" class="px-7 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Reanudar
+          </button>
+          <button type="button" onclick="openStopModal()" class="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            Detener
+          </button>
+        `;
+      } else if (appState.phase === PHASE.READY_BREAK) {
+        setBrandAccent('emerald');
+        ring.style.stroke = '#10b981';
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+        statusPulse.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        statusText.textContent = `Listo para ${breakLabel}`;
+        phaseSubtitle.textContent = 'En espera · Descanso';
+
+        const plannedMs = getPlannedDurationSec(breakType) * 1000;
+        updateTimerVisuals(plannedMs);
+
+        const skipLabel = n >= total ? 'Saltar y finalizar carga' : 'Saltar descanso';
+        controls.innerHTML = `
+          <button type="button" onclick="startBreak()" class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 font-semibold text-sm sm:text-base shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Iniciar ${breakLabel}
+          </button>
+          <button type="button" onclick="skipBreak()" class="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-sm transition-colors">
+            ${skipLabel}
+          </button>
+        `;
+      } else if (appState.phase === PHASE.RUNNING_BREAK) {
+        setBrandAccent('emerald');
+        ring.style.stroke = '#10b981';
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-emerald-500/15 text-emerald-300 border-emerald-500/40';
+        statusPulse.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        statusText.textContent = `${breakLabel} en curso`;
+        phaseSubtitle.textContent = 'Descanso activo';
+        if (pausesCount > 0) {
+          pauseMeta.textContent = `${pausesCount} ${pausesCount === 1 ? 'pausa registrada' : 'pausas registradas'}`;
+        }
+
+        const remMs = Math.max(0, (appState.targetEndTime || Date.now()) - Date.now());
+        updateTimerVisuals(remMs);
+
+        controls.innerHTML = `
+          <button type="button" onclick="pauseBlock()" class="px-6 py-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-semibold text-sm transition-all flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            Pausar
+          </button>
+          <button type="button" onclick="openStopModal()" class="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            Detener
+          </button>
+        `;
+      } else if (appState.phase === PHASE.PAUSED_BREAK) {
+        setBrandAccent('amber');
+        ring.style.stroke = '#f59e0b';
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/40';
+        statusPulse.className = 'w-2 h-2 rounded-full bg-amber-400';
+        statusText.textContent = `${breakLabel} pausado`;
+        phaseSubtitle.textContent = 'Descanso en pausa';
+        pauseMeta.textContent = `Pausa #${pausesCount} activa`;
+
+        updateTimerVisuals(appState.remainingMsAtPause || 0);
+
+        controls.innerHTML = `
+          <button type="button" onclick="resumeBlock()" class="px-7 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Reanudar
+          </button>
+          <button type="button" onclick="openStopModal()" class="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            Detener
+          </button>
+        `;
+      }
+
+      renderBatchBlocksIndicator();
+    }
+
+    function setBrandAccent(color) {
+      const dot = document.getElementById('brand-dot');
+      if (color === 'emerald') {
+        dot.className = 'w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 transition-colors';
+      } else if (color === 'amber') {
+        dot.className = 'w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 transition-colors';
+      } else {
+        dot.className = 'w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 transition-colors';
+      }
+    }
+
+    /** Dibuja los indicadores de progreso de cada bloque de la carga */
+    function renderBatchBlocksIndicator() {
+      const container = document.getElementById('batch-blocks-indicator');
+      const total = appState.config.totalPomodoros;
+      const current = appState.currentPomodoro;
+      const inBreakPhase =
+        appState.phase === PHASE.READY_BREAK ||
+        appState.phase === PHASE.RUNNING_BREAK ||
+        appState.phase === PHASE.PAUSED_BREAK;
+
+      let html = '';
+      for (let i = 1; i <= total; i++) {
+        let cls = 'h-2.5 w-8 sm:w-10 rounded-full transition-all ';
+        if (i < current || (i === current && inBreakPhase)) {
+          cls += 'bg-rose-500'; // Completado
+        } else if (i === current) {
+          cls += appState.phase === PHASE.PAUSED_POMODORO
+            ? 'bg-amber-400 ring-2 ring-amber-400/30'
+            : 'bg-rose-400/80 ring-2 ring-rose-500/40';
+        } else {
+          cls += 'bg-zinc-800';
+        }
+        html += `<div class="${cls}" title="Pomodoro ${i} de ${total}"></div>`;
+      }
+      container.innerHTML = html;
+      document.getElementById('batch-progress-label').textContent = `Bloque ${current} de ${total}`;
+    }
+
+    // =========================================================================
+    // RESUMEN DEL DÍA E HISTÓRICO DETALLADO
+    // =========================================================================
+
+    function renderTodaySummary() {
+      const todayLogs = historyLogs.filter((l) => isToday(l.started_at));
+      const todayPomosCompleted = todayLogs.filter((l) => l.type === 'pomodoro' && l.status === 'completed');
+      const todayBreaks = todayLogs.filter((l) => l.type === 'short_break' || l.type === 'long_break');
+
+      // Tiempo enfocado efectivo (duración real menos pausas) de todos los pomodoros de hoy
+      let focusedSec = 0;
+      for (const log of todayLogs) {
+        if (log.type === 'pomodoro' && log.started_at && log.ended_at) {
+          const wallSec = Math.max(0, (new Date(log.ended_at) - new Date(log.started_at)) / 1000);
+          focusedSec += Math.max(0, wallSec - (log.total_paused_sec || 0));
+        }
+      }
+
+      document.getElementById('today-pomos-count').textContent = todayPomosCompleted.length;
+      document.getElementById('today-focus-time').textContent = formatDurationHuman(focusedSec);
+      document.getElementById('today-breaks-count').textContent = todayBreaks.length;
+      document.getElementById('history-badge').textContent = historyLogs.length;
+    }
+
+    function populateTagFilter() {
+      const select = document.getElementById('filter-tag');
+      const currentVal = select.value;
+      const tags = [...new Set(historyLogs.map((l) => l.tag).filter(Boolean))].sort();
+
+      select.innerHTML = '<option value="all">Todas las etiquetas</option>';
+      tags.forEach((tag) => {
+        const opt = document.createElement('option');
+        opt.value = tag;
+        opt.textContent = tag;
+        select.appendChild(opt);
+      });
+
+      if (tags.includes(currentVal)) {
+        select.value = currentVal;
+      }
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('history-list');
+      const typeFilter = document.getElementById('filter-type').value;
+      const tagFilter = document.getElementById('filter-tag').value;
+
+      const filtered = historyLogs.filter((log) => {
+        if (typeFilter !== 'all' && log.type !== typeFilter) return false;
+        if (tagFilter !== 'all' && log.tag !== tagFilter) return false;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        list.innerHTML = `
+          <div class="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-10 text-center">
+            <p class="text-sm font-medium text-zinc-300">No hay registros para mostrar</p>
+            <p class="text-xs text-zinc-500 mt-1">Completa un Pomodoro o un descanso para ver aquí su fecha, hora exacta y pausas.</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = filtered.map((log, idx) => {
+        const typeMeta = {
+          pomodoro: {
+            label: 'Pomodoro',
+            badge: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+            dot: 'bg-rose-400',
+          },
+          short_break: {
+            label: 'Descanso corto',
+            badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+            dot: 'bg-emerald-400',
+          },
+          long_break: {
+            label: 'Descanso largo',
+            badge: 'bg-teal-500/15 text-teal-300 border-teal-500/30',
+            dot: 'bg-teal-400',
+          },
+        }[log.type] || { label: log.type, badge: 'bg-zinc-800 text-zinc-300 border-zinc-700', dot: 'bg-zinc-400' };
+
+        const wallSec = Math.max(0, Math.round((new Date(log.ended_at) - new Date(log.started_at)) / 1000));
+        const activeSec = Math.max(0, wallSec - (log.total_paused_sec || 0));
+        const statusBadge = log.status === 'completed'
+          ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-zinc-800 text-zinc-300">Completado</span>'
+          : '<span class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">Incompleto</span>';
+
+        const hasPauses = Array.isArray(log.pauses) && log.pauses.length > 0;
+        const pausesHtml = hasPauses
+          ? `
+            <details class="mt-3 pt-3 border-t border-zinc-800/80 group">
+              <summary class="cursor-pointer text-xs font-medium text-amber-400 hover:text-amber-300 flex items-center justify-between select-none">
+                <span>${log.pauses.length} ${log.pauses.length === 1 ? 'pausa' : 'pausas'} · Total pausado: ${formatDurationHuman(log.total_paused_sec || 0)}</span>
+                <span class="text-zinc-500 text-[11px] group-open:hidden">Ver detalle ▾</span>
+                <span class="text-zinc-500 text-[11px] hidden group-open:inline">Ocultar ▴</span>
+              </summary>
+              <div class="mt-2.5 space-y-1.5 pl-2 border-l-2 border-amber-500/30">
+                ${log.pauses.map((p, i) => {
+                  const pDur = p.resumed_at
+                    ? Math.max(0, Math.round((new Date(p.resumed_at) - new Date(p.paused_at)) / 1000))
+                    : 0;
+                  return `
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400 font-mono">
+                      <span>Pausa #${i + 1}: ${formatTimeLocal(p.paused_at)} → ${p.resumed_at ? formatTimeLocal(p.resumed_at) : '--:--:--'}</span>
+                      <span class="text-amber-300">${formatDurationHuman(pDur)}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </details>
+          `
+          : '';
+
+        return `
+          <article class="bg-zinc-900/85 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 hover:border-zinc-700/80 transition-colors">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${typeMeta.badge}">
+                  <span class="w-1.5 h-1.5 rounded-full ${typeMeta.dot}"></span>
+                  ${typeMeta.label}
+                </span>
+                <span class="px-2.5 py-1 rounded-lg text-xs font-medium bg-zinc-800/90 text-zinc-300">
+                  ${escapeHtml(log.tag || 'Sin etiqueta')}
+                </span>
+                ${statusBadge}
+              </div>
+              <div class="flex items-center gap-2 text-xs font-mono text-zinc-400">
+                <span>${formatDateLocal(log.started_at)}</span>
+                <span class="text-zinc-600">•</span>
+                <span class="text-zinc-200 font-semibold">${formatTimeLocal(log.started_at)} → ${formatTimeLocal(log.ended_at)}</span>
+              </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-zinc-400">
+              <span>Efectivo: <strong class="text-zinc-200 font-mono">${formatDurationHuman(activeSec)}</strong></span>
+              <span>Planificado: <strong class="text-zinc-300 font-mono">${formatDurationHuman(log.planned_duration_sec)}</strong></span>
+              <span>Tiempo total: <strong class="text-zinc-300 font-mono">${formatDurationHuman(wallSec)}</strong></span>
+            </div>
+
+            ${pausesHtml}
+          </article>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // =========================================================================
+    // EXPORTACIÓN (JSON / CSV) Y LIMPIEZA DEL HISTÓRICO
+    // =========================================================================
+
+    function exportHistory(format) {
+      if (historyLogs.length === 0) {
+        showToast('No hay registros para exportar.', 'warning');
+        return;
+      }
+
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+
+      if (format === 'json') {
+        const blob = new Blob([JSON.stringify(historyLogs, null, 2)], { type: 'application/json;charset=utf-8' });
+        triggerDownload(blob, `pomodoro_historico_${timestamp}.json`);
+        showToast('Histórico exportado en JSON.', 'success');
+        return;
+      }
+
+      if (format === 'csv') {
+        const headers = [
+          'id',
+          'batch_id',
+          'type',
+          'tag',
+          'status',
+          'planned_duration_sec',
+          'started_at',
+          'ended_at',
+          'total_paused_sec',
+          'pauses_count',
+          'pauses_json',
+        ];
+        const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+        const rows = historyLogs.map((l) => [
+          l.id,
+          l.batch_id,
+          l.type,
+          l.tag,
+          l.status,
+          l.planned_duration_sec,
+          l.started_at,
+          l.ended_at,
+          l.total_paused_sec || 0,
+          (l.pauses || []).length,
+          JSON.stringify(l.pauses || []),
+        ].map(escapeCsv).join(','));
+
+        // BOM UTF-8 para compatibilidad directa con Excel
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        triggerDownload(blob, `pomodoro_historico_${timestamp}.csv`);
+        showToast('Histórico exportado en CSV.', 'success');
+      }
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function openClearHistoryModal() {
+      if (historyLogs.length === 0) {
+        showToast('El histórico ya está vacío.', 'info');
+        return;
+      }
+      openModal('modal-clear-history');
+    }
+
+    function confirmClearHistory() {
+      closeModal('modal-clear-history');
+      historyLogs = [];
+      saveHistory();
+      renderTodaySummary();
+      populateTagFilter();
+      renderHistory();
+      showToast('Histórico eliminado correctamente.', 'info');
+    }
+
+    // =========================================================================
+    // INICIALIZACIÓN Y RECUPERACIÓN TRAS RECARGA DE PÁGINA
+    // =========================================================================
+
+    function initApp() {
+      loadAllData();
+      renderSoundIcon();
+      syncSetupInputsFromConfig();
+
+      // Eventos en inputs de configuración para actualizar resumen en vivo
+      ['cfg-pomo', 'cfg-short', 'cfg-long', 'cfg-long-every'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', updateSetupSummary);
+      });
+      document.getElementById('cfg-tag').addEventListener('input', (e) => {
+        highlightSelectedTagChip(e.target.value);
+      });
+
+      // Recuperar estado si el temporizador estaba corriendo antes de recargar
+      if (appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.RUNNING_BREAK) {
+        if (appState.targetEndTime && appState.targetEndTime <= Date.now()) {
+          // Terminó mientras la pestaña estaba cerrada: guardar con hora exacta de fin
+          completeCurrentBlock(appState.targetEndTime);
+        } else {
+          renderApp();
+          startTicking();
+        }
+      } else {
+        renderApp();
+      }
+
+      renderTodaySummary();
+    }
+
+    // Sincronización inmediata al volver a la pestaña desde segundo plano
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && (appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.RUNNING_BREAK)) {
+        onTick();
+      }
+    });
+
+    // Arranque al cargar el DOM
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
