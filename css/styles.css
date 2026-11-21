@@ -1,0 +1,85 @@
+/* =========================================================================
+ * POMODORO PRO — ESTILOS PERSONALIZADOS
+ * ========================================================================= */
+
+/* Transición suave para el anillo de progreso SVG */
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.25s linear, stroke 0.35s ease;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* Scrollbar sutil en modo oscuro */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Segmentos del gráfico de dona SVG */
+.report-donut-segment {
+  transition: stroke-width 0.18s ease, opacity 0.18s ease, stroke-dashoffset 0.35s ease;
+  cursor: pointer;
+}
+
+.report-donut-segment:hover,
+.report-donut-segment.is-active {
+  stroke-width: 24;
+}
+
+/* Patrón sutil rayado para tiempos sin avanzar (idle) en la línea de tiempo */
+.timeline-idle-pattern {
+  background-color: rgba(100, 116, 139, 0.38);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(148, 163, 184, 0.28),
+    rgba(148, 163, 184, 0.28) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.timeline-neutral-gap {
+  background-color: rgba(39, 39, 42, 0.7);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(63, 63, 70, 0.35),
+    rgba(63, 63, 70, 0.35) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+}
+
+/* Barras y segmentos interactivos */
+.report-bar-col {
+  transition: opacity 0.15s ease;
+}
+
+.report-bar-col:hover {
+  opacity: 1;
+}
+
+.timeline-segment {
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.timeline-segment:hover {
+  filter: brightness(1.2);
+}
+
+/* Tooltip flotante de gráficos */
+#report-tooltip {
+  transition: opacity 0.12s ease;
+}

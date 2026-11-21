@@ -28,6 +28,9 @@ jobs:
         run: |
           mkdir -p _site
           cp pomodoro.html _site/index.html
+          cp pomodoro.html _site/pomodoro.html
+          cp -r css _site/css
+          cp -r js _site/js
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
