@@ -1,11 +1,56 @@
 /**
  * =========================================================================
- * UTILIDADES DE TIEMPO, FORMATO, IDs Y SANITIZACIÓN
+ * UTILIDADES DE TIEMPO, FECHAS, HÁPTICA, WAKE LOCK Y FORMATO
  * =========================================================================
  */
 
 function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Devuelve clave local YYYY-MM-DD para una fecha dada o hoy */
+function formatDateKeyLocal(dateInput = new Date()) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayKey() {
+  return formatDateKeyLocal(new Date());
+}
+
+/** Suma o resta días a una fecha clave YYYY-MM-DD (sin problemas de DST) */
+function shiftDateKey(dateKey, deltaDays) {
+  const [y, m, d] = String(dateKey).split('-').map(Number);
+  const dt = new Date(y, m - 1, d, 12, 0, 0);
+  dt.setDate(dt.getDate() + deltaDays);
+  return formatDateKeyLocal(dt);
+}
+
+function getTomorrowKey() {
+  return shiftDateKey(getTodayKey(), 1);
+}
+
+function formatDateKeyShort(dateKey) {
+  const [, month, day] = String(dateKey).split('-');
+  return `${day}/${month}`;
+}
+
+function formatDateKeyDisplay(dateKey) {
+  const [year, month, day] = String(dateKey).split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function formatTodayHeaderDate() {
+  const now = new Date();
+  const str = now.toLocaleDateString('es-PE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+  });
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /** Convierte segundos en formato MM:SS o HH:MM:SS */
@@ -19,7 +64,7 @@ function formatTimer(totalSeconds) {
   return `${pad(mins)}:${pad(secs)}`;
 }
 
-/** Formatea una duración en segundos de manera legible (ej. "25m 0s", "1h 15m") */
+/** Formatea una duración en segundos de manera legible (ej. "25m", "1h 15m") */
 function formatDurationHuman(seconds) {
   const s = Math.max(0, Math.round(seconds));
   const hrs = Math.floor(s / 3600);
@@ -30,7 +75,6 @@ function formatDurationHuman(seconds) {
   return `${secs}s`;
 }
 
-/** Formatea una duración compacta para etiquetas de gráficos (ej. "1.5h", "25m", "45s") */
 function formatDurationCompact(seconds) {
   const s = Math.max(0, Math.round(seconds));
   if (s >= 3600) {
@@ -43,7 +87,6 @@ function formatDurationCompact(seconds) {
   return `${s}s`;
 }
 
-/** Formatea un porcentaje con un decimal (o 0% si es cero) */
 function formatPercent(part, total) {
   if (!total || total <= 0 || !part || part <= 0) return '0%';
   const pct = (part / total) * 100;
@@ -51,7 +94,6 @@ function formatPercent(part, total) {
   return `${pct.toFixed(1).replace(/\.0$/, '')}%`;
 }
 
-/** Formatea fecha ISO a DD/MM/YYYY */
 function formatDateLocal(isoString) {
   const d = new Date(isoString);
   return d.toLocaleDateString('es-PE', {
@@ -61,28 +103,6 @@ function formatDateLocal(isoString) {
   });
 }
 
-/** Devuelve clave local YYYY-MM-DD para agrupar por día calendario */
-function formatDateKeyLocal(dateInput) {
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/** Convierte una clave YYYY-MM-DD a etiqueta corta DD/MM */
-function formatDateKeyShort(dateKey) {
-  const [, month, day] = String(dateKey).split('-');
-  return `${day}/${month}`;
-}
-
-/** Convierte una clave YYYY-MM-DD a etiqueta legible DD/MM/YYYY */
-function formatDateKeyDisplay(dateKey) {
-  const [year, month, day] = String(dateKey).split('-');
-  return `${day}/${month}/${year}`;
-}
-
-/** Formatea fecha ISO o ms a HH:MM:SS exacto */
 function formatTimeLocal(isoOrMs) {
   const d = new Date(isoOrMs);
   return d.toLocaleTimeString('es-PE', {
@@ -93,7 +113,6 @@ function formatTimeLocal(isoOrMs) {
   });
 }
 
-/** Formatea fecha ISO o ms a HH:MM */
 function formatTimeShortLocal(isoOrMs) {
   const d = new Date(isoOrMs);
   return d.toLocaleTimeString('es-PE', {
@@ -103,18 +122,11 @@ function formatTimeShortLocal(isoOrMs) {
   });
 }
 
-/** Verifica si un timestamp ISO corresponde al día de hoy (hora local) */
 function isToday(isoString) {
-  const d = new Date(isoString);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
+  if (!isoString) return false;
+  return formatDateKeyLocal(isoString) === getTodayKey();
 }
 
-/** Calcula la duración en segundos de un tipo de bloque según configuración */
 function getPlannedDurationSec(type) {
   const mult = appState.config.testMode ? 1 : 60;
   if (type === 'pomodoro') return appState.config.pomodoroVal * mult;
@@ -122,13 +134,11 @@ function getPlannedDurationSec(type) {
   return appState.config.shortBreakVal * mult;
 }
 
-/** Determina si el descanso actual corresponde a descanso largo o corto */
 function getCurrentBreakType() {
   const interval = Math.max(2, appState.config.longBreakInterval);
   return appState.currentPomodoro % interval === 0 ? 'long_break' : 'short_break';
 }
 
-/** Calcula el total de segundos pausados a partir del arreglo pauses */
 function calculateTotalPausedSec(pauses) {
   if (!Array.isArray(pauses) || pauses.length === 0) return 0;
   let totalMs = 0;
@@ -142,9 +152,64 @@ function calculateTotalPausedSec(pauses) {
 }
 
 function escapeHtml(str) {
-  return String(str)
+  return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// =========================================================================
+// FEEDBACK HÁPTICO (navigator.vibrate)
+// =========================================================================
+
+function triggerHaptic(pattern = 15) {
+  if (typeof userPrefs !== 'undefined' && !userPrefs.hapticsEnabled) return;
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(pattern);
+    }
+  } catch (e) {
+    // Ignorar silenciosamente si el navegador bloquea vibración
+  }
+}
+
+// =========================================================================
+// SCREEN WAKE LOCK API (MANTENER PANTALLA ACTIVA)
+// =========================================================================
+
+let wakeLockSentinel = null;
+
+async function syncWakeLock() {
+  const shouldLock =
+    Boolean(userPrefs.wakeLockEnabled) &&
+    (appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.RUNNING_BREAK);
+
+  if (!shouldLock) {
+    await releaseWakeLock();
+    return;
+  }
+
+  if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+  if (wakeLockSentinel && !wakeLockSentinel.released) return;
+
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener('release', () => {
+      wakeLockSentinel = null;
+    });
+  } catch (e) {
+    console.warn('Wake Lock no disponible en este momento:', e);
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLockSentinel) {
+    try {
+      await wakeLockSentinel.release();
+    } catch (e) {
+      // Ignorar si ya estaba liberado
+    }
+    wakeLockSentinel = null;
+  }
 }

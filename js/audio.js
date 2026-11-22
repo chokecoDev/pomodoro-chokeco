@@ -1,6 +1,6 @@
 /**
  * =========================================================================
- * WEB AUDIO API — ALARMAS SONORAS SIN DEPENDENCIAS EXTERNAS
+ * WEB AUDIO API, VIBRACIÓN HÁPTICA Y NOTIFICACIONES DE FINALIZACIÓN
  * =========================================================================
  */
 
@@ -36,8 +36,11 @@ function playTone(ctx, freq, startTime, duration, type = 'sine', peakGain = 0.22
   osc.stop(startTime + duration + 0.02);
 }
 
-/** Alarma al finalizar un Pomodoro (acorde ascendente cálido) */
+/** Alarma al finalizar un Pomodoro (acorde ascendente cálido + vibración) */
 function playPomodoroCompleteSound() {
+  triggerHaptic([180, 90, 180, 90, 260]);
+  sendBlockNotification('¡Pomodoro completado!', 'Buen trabajo. Inicia tu descanso cuando estés listo.');
+
   if (!userPrefs.soundEnabled) return;
   try {
     const ctx = getAudioContext();
@@ -52,8 +55,11 @@ function playPomodoroCompleteSound() {
   }
 }
 
-/** Alarma al finalizar un Descanso (doble campana nítida distinta) */
+/** Alarma al finalizar un Descanso (doble campana nítida + vibración) */
 function playBreakCompleteSound() {
+  triggerHaptic([140, 80, 140]);
+  sendBlockNotification('¡Descanso completado!', 'Listo para retomar tu siguiente bloque de enfoque.');
+
   if (!userPrefs.soundEnabled) return;
   try {
     const ctx = getAudioContext();
@@ -67,21 +73,46 @@ function playBreakCompleteSound() {
   }
 }
 
+function sendBlockNotification(title, body) {
+  if (!userPrefs.notificationsEnabled) return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, {
+      body,
+      icon: 'assets/icons/icon-192.png',
+      badge: 'assets/icons/favicon-32x32.png',
+      tag: 'pomodoro-pro-timer',
+    });
+  } catch (e) {
+    // Algunos navegadores móviles requieren ServiceWorkerRegistration.showNotification
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then((reg) => {
+        if (reg && typeof reg.showNotification === 'function') {
+          reg.showNotification(title, { body, icon: 'assets/icons/icon-192.png' });
+        }
+      }).catch(() => {});
+    }
+  }
+}
+
 function toggleSound() {
   userPrefs.soundEnabled = !userPrefs.soundEnabled;
   savePrefs();
   renderSoundIcon();
+  triggerHaptic(12);
   if (userPrefs.soundEnabled) {
-    // Desbloquea el contexto de audio y da un pequeño tono de confirmación
     const ctx = getAudioContext();
     if (ctx) playTone(ctx, 660, ctx.currentTime, 0.15, 'sine', 0.12);
     showToast('Alarmas sonoras activadas', 'info');
   } else {
     showToast('Alarmas sonoras silenciadas', 'info');
   }
+  if (typeof syncSettingsUi === 'function') syncSettingsUi();
 }
 
 function renderSoundIcon() {
-  document.getElementById('icon-sound-on').classList.toggle('hidden', !userPrefs.soundEnabled);
-  document.getElementById('icon-sound-off').classList.toggle('hidden', userPrefs.soundEnabled);
+  const onEl = document.getElementById('icon-sound-on');
+  const offEl = document.getElementById('icon-sound-off');
+  if (onEl) onEl.classList.toggle('hidden', !userPrefs.soundEnabled);
+  if (offEl) offEl.classList.toggle('hidden', userPrefs.soundEnabled);
 }

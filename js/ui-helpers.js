@@ -1,106 +1,172 @@
 /**
  * =========================================================================
- * NOTIFICACIONES TOAST, MODALES Y NAVEGACIÓN ENTRE VISTAS
+ * TEMA OSCURO/CLARO, TOASTS, MODALES Y NAVEGACIÓN DE 4 PESTAÑAS
  * =========================================================================
  */
 
+function applyTheme(theme) {
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', normalized);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.setAttribute('content', normalized === 'light' ? '#f4f4f7' : '#09090b');
+  }
+  const iconSun = document.getElementById('icon-theme-sun');
+  const iconMoon = document.getElementById('icon-theme-moon');
+  if (iconSun && iconMoon) {
+    iconSun.classList.toggle('hidden', normalized !== 'dark');
+    iconMoon.classList.toggle('hidden', normalized !== 'light');
+  }
+}
+
+function toggleThemeQuick() {
+  userPrefs.theme = userPrefs.theme === 'light' ? 'dark' : 'light';
+  savePrefs();
+  applyTheme(userPrefs.theme);
+  triggerHaptic(10);
+  if (typeof syncSettingsUi === 'function') syncSettingsUi();
+}
+
+function setTheme(theme) {
+  userPrefs.theme = theme === 'light' ? 'light' : 'dark';
+  savePrefs();
+  applyTheme(userPrefs.theme);
+  if (typeof syncSettingsUi === 'function') syncSettingsUi();
+}
+
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
+  if (!container) return;
+
   const el = document.createElement('div');
-  const colors = {
-    info: 'bg-zinc-900 border-zinc-700 text-zinc-100',
-    success: 'bg-emerald-950/95 border-emerald-500/40 text-emerald-200',
-    warning: 'bg-amber-950/95 border-amber-500/40 text-amber-200',
-    error: 'bg-rose-950/95 border-rose-500/40 text-rose-200',
-  };
-  el.className = `pointer-events-auto px-4 py-3 rounded-xl border text-xs sm:text-sm font-medium shadow-xl transition-all duration-300 translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+  const typeCls = type === 'success'
+    ? 'toast-success'
+    : type === 'warning'
+      ? 'toast-warning'
+      : type === 'error'
+        ? 'toast-error'
+        : '';
+
+  el.className = `toast ${typeCls}`;
   el.textContent = message;
   container.appendChild(el);
 
   requestAnimationFrame(() => {
-    el.classList.remove('translate-y-2', 'opacity-0');
+    el.classList.add('is-visible');
   });
 
   setTimeout(() => {
-    el.classList.add('opacity-0', 'translate-y-2');
-    setTimeout(() => el.remove(), 300);
-  }, 3200);
+    el.classList.remove('is-visible');
+    setTimeout(() => el.remove(), 220);
+  }, 2900);
 }
 
 function openModal(id) {
-  document.getElementById(id).classList.remove('hidden');
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('hidden');
 }
 
 function closeModal(id) {
-  document.getElementById(id).classList.add('hidden');
+  const el = document.getElementById(id);
+  if (el) el.classList.add('hidden');
 }
 
 function setBrandAccent(color) {
   const dot = document.getElementById('brand-dot');
-  if (color === 'emerald') {
-    dot.className = 'w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 transition-colors';
-  } else if (color === 'amber') {
-    dot.className = 'w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 transition-colors';
-  } else {
-    dot.className = 'w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 transition-colors';
-  }
+  if (!dot) return;
+  dot.classList.remove('accent-emerald', 'accent-amber');
+  if (color === 'emerald') dot.classList.add('accent-emerald');
+  else if (color === 'amber') dot.classList.add('accent-amber');
 }
+
+// =========================================================================
+// NAVEGACIÓN PRINCIPAL (4 PESTAÑAS INFERIORES: HOY, ENFOQUE, HÁBITOS, PROGRESO)
+// =========================================================================
 
 function switchTab(tab) {
-  currentMainTab = tab;
-  const timerView = document.getElementById('view-timer');
-  const historyView = document.getElementById('view-history');
-  const tabTimer = document.getElementById('tab-timer');
-  const tabHistory = document.getElementById('tab-history');
+  const validTabs = ['today', 'focus', 'habits', 'progress'];
+  const target = validTabs.includes(tab) ? tab : 'today';
+  currentMainTab = target;
 
-  if (tab === 'timer') {
-    timerView.classList.remove('hidden');
-    historyView.classList.add('hidden');
-    tabTimer.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-zinc-800 text-zinc-100 shadow-sm';
-    tabHistory.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5';
-  } else {
-    timerView.classList.add('hidden');
-    historyView.classList.remove('hidden');
-    tabHistory.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-zinc-800 text-zinc-100 shadow-sm flex items-center gap-1.5';
-    tabTimer.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200';
-    populateTagFilter();
-    refreshActiveHistoryView();
+  validTabs.forEach((t) => {
+    const view = document.getElementById(`view-${t}`);
+    const navBtn = document.getElementById(`nav-${t}`);
+    if (view) view.classList.toggle('hidden', t !== target);
+    if (navBtn) {
+      navBtn.classList.toggle('is-active', t === target);
+      navBtn.setAttribute('aria-current', t === target ? 'page' : 'false');
+    }
+  });
+
+  // FAB visible únicamente en la pestaña "Hoy" para captura rápida en 1 toque
+  const fab = document.getElementById('fab-quick-add');
+  if (fab) fab.classList.toggle('hidden', target !== 'today');
+
+  if (typeof hideReportTooltip === 'function') hideReportTooltip();
+
+  if (target === 'today') {
+    if (typeof renderTodayView === 'function') renderTodayView();
+  } else if (target === 'focus') {
+    if (typeof populateTaskLinkSelect === 'function') populateTaskLinkSelect();
+    if (typeof renderApp === 'function') renderApp();
+    if (typeof renderTodaySummary === 'function') renderTodaySummary();
+  } else if (target === 'habits') {
+    if (typeof renderHabitsView === 'function') renderHabitsView();
+  } else if (target === 'progress') {
+    if (typeof populateTagFilter === 'function') populateTagFilter();
+    refreshActiveProgressView();
   }
 }
 
-function switchHistorySubTab(subTab) {
-  currentHistorySubTab = subTab;
-  const auditPanel = document.getElementById('history-panel-audit');
-  const reportsPanel = document.getElementById('history-panel-reports');
-  const btnAudit = document.getElementById('subtab-audit');
-  const btnReports = document.getElementById('subtab-reports');
+function switchProgressSubTab(subTab) {
+  const valid = ['overview', 'reports', 'audit', 'settings'];
+  const target = valid.includes(subTab) ? subTab : 'overview';
+  currentProgressSubTab = target;
 
-  const activeCls = 'flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-zinc-800 text-zinc-100 shadow-sm flex items-center justify-center gap-2';
-  const idleCls = 'flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200 flex items-center justify-center gap-2';
+  valid.forEach((s) => {
+    const panel = document.getElementById(`progress-panel-${s}`);
+    const btn = document.getElementById(`subtab-${s}`);
+    if (panel) panel.classList.toggle('hidden', s !== target);
+    if (btn) btn.classList.toggle('is-active', s === target);
+  });
 
-  if (subTab === 'reports') {
-    auditPanel.classList.add('hidden');
-    reportsPanel.classList.remove('hidden');
-    btnAudit.className = idleCls;
-    btnReports.className = activeCls;
-    if (typeof renderReports === 'function') {
-      renderReports();
-    }
-  } else {
-    reportsPanel.classList.add('hidden');
-    auditPanel.classList.remove('hidden');
-    btnAudit.className = activeCls;
-    btnReports.className = idleCls;
-    if (typeof renderHistory === 'function') {
-      renderHistory();
-    }
-  }
+  if (typeof hideReportTooltip === 'function') hideReportTooltip();
+  refreshActiveProgressView();
 }
 
-function refreshActiveHistoryView() {
-  if (currentHistorySubTab === 'reports') {
+function refreshActiveProgressView() {
+  if (currentProgressSubTab === 'overview') {
+    if (typeof renderProgressOverview === 'function') renderProgressOverview();
+  } else if (currentProgressSubTab === 'reports') {
     if (typeof renderReports === 'function') renderReports();
-  } else {
+  } else if (currentProgressSubTab === 'audit') {
     if (typeof renderHistory === 'function') renderHistory();
+  } else if (currentProgressSubTab === 'settings') {
+    if (typeof renderSettingsPanel === 'function') renderSettingsPanel();
   }
+}
+
+function updateHeaderMiniTimer(text, phase) {
+  const pill = document.getElementById('header-mini-timer');
+  const label = document.getElementById('header-mini-timer-text');
+  if (!pill || !label) return;
+
+  const isActive =
+    phase === PHASE.RUNNING_POMODORO ||
+    phase === PHASE.PAUSED_POMODORO ||
+    phase === PHASE.RUNNING_BREAK ||
+    phase === PHASE.PAUSED_BREAK;
+
+  if (!isActive || currentMainTab === 'focus') {
+    pill.classList.add('hidden');
+    return;
+  }
+
+  pill.classList.remove('hidden', 'is-break', 'is-paused');
+  if (phase === PHASE.PAUSED_POMODORO || phase === PHASE.PAUSED_BREAK) {
+    pill.classList.add('is-paused');
+  } else if (phase === PHASE.RUNNING_BREAK) {
+    pill.classList.add('is-break');
+  }
+  label.textContent = text;
 }

@@ -9,7 +9,6 @@ function renderTodaySummary() {
   const todayPomosCompleted = todayLogs.filter((l) => l.type === 'pomodoro' && l.status === 'completed');
   const todayBreaks = todayLogs.filter((l) => l.type === 'short_break' || l.type === 'long_break');
 
-  // Tiempo enfocado efectivo (duración real menos pausas) de todos los pomodoros de hoy
   let focusedSec = 0;
   for (const log of todayLogs) {
     if (log.type === 'pomodoro' && log.started_at && log.ended_at) {
@@ -18,10 +17,15 @@ function renderTodaySummary() {
     }
   }
 
-  document.getElementById('today-pomos-count').textContent = todayPomosCompleted.length;
-  document.getElementById('today-focus-time').textContent = formatDurationHuman(focusedSec);
-  document.getElementById('today-breaks-count').textContent = todayBreaks.length;
-  document.getElementById('history-badge').textContent = historyLogs.length;
+  const elPomos = document.getElementById('today-pomos-count');
+  const elFocus = document.getElementById('today-focus-time');
+  const elBreaks = document.getElementById('today-breaks-count');
+  const elBadge = document.getElementById('history-badge');
+
+  if (elPomos) elPomos.textContent = String(todayPomosCompleted.length);
+  if (elFocus) elFocus.textContent = formatDurationHuman(focusedSec);
+  if (elBreaks) elBreaks.textContent = String(todayBreaks.length);
+  if (elBadge) elBadge.textContent = String(historyLogs.length);
 }
 
 function populateTagFilter() {
@@ -51,6 +55,8 @@ function populateTagFilter() {
 
 function renderHistory() {
   const list = document.getElementById('history-list');
+  if (!list) return;
+
   const typeFilter = document.getElementById('filter-type').value;
   const tagFilter = document.getElementById('filter-tag').value;
 
@@ -62,9 +68,9 @@ function renderHistory() {
 
   if (filtered.length === 0) {
     list.innerHTML = `
-      <div class="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-10 text-center">
-        <p class="text-sm font-medium text-zinc-300">No hay registros para mostrar</p>
-        <p class="text-xs text-zinc-500 mt-1">Completa un Pomodoro o un descanso para ver aquí su fecha, hora exacta y pausas.</p>
+      <div class="card" style="text-align:center;padding:34px 20px;">
+        <p style="margin:0;font-size:14px;font-weight:600;">No hay registros para mostrar</p>
+        <p class="muted-text" style="margin:6px 0 0;">Completa un Pomodoro o descanso para ver aquí su fecha, hora exacta y pausas.</p>
       </div>
     `;
     return;
@@ -72,47 +78,39 @@ function renderHistory() {
 
   list.innerHTML = filtered.map((log) => {
     const typeMeta = {
-      pomodoro: {
-        label: 'Pomodoro',
-        badge: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-        dot: 'bg-rose-400',
-      },
-      short_break: {
-        label: 'Descanso corto',
-        badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-        dot: 'bg-emerald-400',
-      },
-      long_break: {
-        label: 'Descanso largo',
-        badge: 'bg-teal-500/15 text-teal-300 border-teal-500/30',
-        dot: 'bg-teal-400',
-      },
-    }[log.type] || { label: log.type, badge: 'bg-zinc-800 text-zinc-300 border-zinc-700', dot: 'bg-zinc-400' };
+      pomodoro: { label: 'Pomodoro', badge: 'badge-rose', dot: 'dot-rose' },
+      short_break: { label: 'Descanso corto', badge: 'badge-emerald', dot: 'dot-emerald' },
+      long_break: { label: 'Descanso largo', badge: 'badge-teal', dot: 'dot-teal' },
+    }[log.type] || { label: log.type, badge: '', dot: 'dot-slate' };
 
     const wallSec = Math.max(0, Math.round((new Date(log.ended_at) - new Date(log.started_at)) / 1000));
     const activeSec = Math.max(0, wallSec - (log.total_paused_sec || 0));
     const statusBadge = log.status === 'completed'
-      ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-zinc-800 text-zinc-300">Completado</span>'
-      : '<span class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">Incompleto</span>';
+      ? '<span class="badge">Completado</span>'
+      : '<span class="badge badge-amber">Incompleto</span>';
+
+    const taskLine = log.task_title
+      ? `<div class="tiny-text" style="margin-top:6px;">Tarea: <strong style="color:var(--text-primary);">${escapeHtml(log.task_title)}</strong></div>`
+      : '';
 
     const hasPauses = Array.isArray(log.pauses) && log.pauses.length > 0;
     const pausesHtml = hasPauses
       ? `
-        <details class="mt-3 pt-3 border-t border-zinc-800/80 group">
-          <summary class="cursor-pointer text-xs font-medium text-amber-400 hover:text-amber-300 flex items-center justify-between select-none">
-            <span>${log.pauses.length} ${log.pauses.length === 1 ? 'pausa' : 'pausas'} · Total pausado: ${formatDurationHuman(log.total_paused_sec || 0)}</span>
-            <span class="text-zinc-500 text-[11px] group-open:hidden">Ver detalle ▾</span>
-            <span class="text-zinc-500 text-[11px] hidden group-open:inline">Ocultar ▴</span>
+        <details style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle);">
+          <summary class="row-between" style="font-size:12px;font-weight:600;color:var(--amber-text);">
+            <span>${log.pauses.length} ${log.pauses.length === 1 ? 'pausa' : 'pausas'} · Pausado: ${formatDurationHuman(log.total_paused_sec || 0)}</span>
+            <span class="tiny-text when-closed">Ver detalle ▾</span>
+            <span class="tiny-text when-open">Ocultar ▴</span>
           </summary>
-          <div class="mt-2.5 space-y-1.5 pl-2 border-l-2 border-amber-500/30">
+          <div class="stack-sm" style="margin-top:8px;padding-left:10px;border-left:2px solid var(--amber-border);">
             ${log.pauses.map((p, i) => {
               const pDur = p.resumed_at
                 ? Math.max(0, Math.round((new Date(p.resumed_at) - new Date(p.paused_at)) / 1000))
                 : 0;
               return `
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400 font-mono">
+                <div class="row-between font-mono" style="font-size:11px;color:var(--text-secondary);">
                   <span>Pausa #${i + 1}: ${formatTimeLocal(p.paused_at)} → ${p.resumed_at ? formatTimeLocal(p.resumed_at) : '--:--:--'}</span>
-                  <span class="text-amber-300">${formatDurationHuman(pDur)}</span>
+                  <span style="color:var(--amber-text);font-weight:700;">${formatDurationHuman(pDur)}</span>
                 </div>
               `;
             }).join('')}
@@ -122,29 +120,29 @@ function renderHistory() {
       : '';
 
     return `
-      <article class="bg-zinc-900/85 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 hover:border-zinc-700/80 transition-colors">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${typeMeta.badge}">
-              <span class="w-1.5 h-1.5 rounded-full ${typeMeta.dot}"></span>
+      <article class="card" style="padding:14px 16px;">
+        <div class="row-between">
+          <div class="row-wrap" style="gap:6px;">
+            <span class="badge ${typeMeta.badge}">
+              <span class="dot ${typeMeta.dot}"></span>
               ${typeMeta.label}
             </span>
-            <span class="px-2.5 py-1 rounded-lg text-xs font-medium bg-zinc-800/90 text-zinc-300">
-              ${escapeHtml(log.tag || 'Sin etiqueta')}
-            </span>
+            <span class="badge">${escapeHtml(log.tag || 'Sin etiqueta')}</span>
             ${statusBadge}
           </div>
-          <div class="flex items-center gap-2 text-xs font-mono text-zinc-400">
+          <div class="font-mono" style="font-size:11px;color:var(--text-secondary);">
             <span>${formatDateLocal(log.started_at)}</span>
-            <span class="text-zinc-600">•</span>
-            <span class="text-zinc-200 font-semibold">${formatTimeLocal(log.started_at)} → ${formatTimeLocal(log.ended_at)}</span>
+            <span> · </span>
+            <strong style="color:var(--text-primary);">${formatTimeLocal(log.started_at)} → ${formatTimeLocal(log.ended_at)}</strong>
           </div>
         </div>
 
-        <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-zinc-400">
-          <span>Efectivo: <strong class="text-zinc-200 font-mono">${formatDurationHuman(activeSec)}</strong></span>
-          <span>Planificado: <strong class="text-zinc-300 font-mono">${formatDurationHuman(log.planned_duration_sec)}</strong></span>
-          <span>Tiempo total: <strong class="text-zinc-300 font-mono">${formatDurationHuman(wallSec)}</strong></span>
+        ${taskLine}
+
+        <div class="row-wrap" style="margin-top:10px;gap:14px;font-size:12px;color:var(--text-secondary);">
+          <span>Efectivo: <strong class="font-mono" style="color:var(--text-primary);">${formatDurationHuman(activeSec)}</strong></span>
+          <span>Planificado: <strong class="font-mono">${formatDurationHuman(log.planned_duration_sec)}</strong></span>
+          <span>Total: <strong class="font-mono">${formatDurationHuman(wallSec)}</strong></span>
         </div>
 
         ${pausesHtml}
@@ -154,12 +152,12 @@ function renderHistory() {
 }
 
 // =========================================================================
-// EXPORTACIÓN (JSON / CSV) Y LIMPIEZA DEL HISTÓRICO
+// EXPORTACIÓN DE HISTÓRICO POMODORO (JSON / CSV) Y LIMPIEZA
 // =========================================================================
 
 function exportHistory(format) {
   if (historyLogs.length === 0) {
-    showToast('No hay registros para exportar.', 'warning');
+    showToast('No hay registros de Pomodoro para exportar.', 'warning');
     return;
   }
 
@@ -168,7 +166,7 @@ function exportHistory(format) {
   if (format === 'json') {
     const blob = new Blob([JSON.stringify(historyLogs, null, 2)], { type: 'application/json;charset=utf-8' });
     triggerDownload(blob, `pomodoro_historico_${timestamp}.json`);
-    showToast('Histórico exportado en JSON.', 'success');
+    showToast('Histórico Pomodoro exportado en JSON.', 'success');
     return;
   }
 
@@ -178,6 +176,7 @@ function exportHistory(format) {
       'batch_id',
       'type',
       'tag',
+      'task_title',
       'status',
       'planned_duration_sec',
       'started_at',
@@ -192,6 +191,7 @@ function exportHistory(format) {
       l.batch_id,
       l.type,
       l.tag,
+      l.task_title || '',
       l.status,
       l.planned_duration_sec,
       l.started_at,
@@ -201,11 +201,10 @@ function exportHistory(format) {
       JSON.stringify(l.pauses || []),
     ].map(escapeCsv).join(','));
 
-    // BOM UTF-8 para compatibilidad directa con Excel
     const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     triggerDownload(blob, `pomodoro_historico_${timestamp}.csv`);
-    showToast('Histórico exportado en CSV.', 'success');
+    showToast('Histórico Pomodoro exportado en CSV.', 'success');
   }
 }
 
@@ -222,7 +221,7 @@ function triggerDownload(blob, filename) {
 
 function openClearHistoryModal() {
   if (historyLogs.length === 0) {
-    showToast('El histórico ya está vacío.', 'info');
+    showToast('El histórico de Pomodoro ya está vacío.', 'info');
     return;
   }
   openModal('modal-clear-history');
@@ -235,8 +234,7 @@ function confirmClearHistory() {
   renderTodaySummary();
   populateTagFilter();
   renderHistory();
-  if (typeof renderReports === 'function') {
-    renderReports();
-  }
-  showToast('Histórico eliminado correctamente.', 'info');
+  if (typeof renderReports === 'function') renderReports();
+  if (typeof renderProgressOverview === 'function') renderProgressOverview();
+  showToast('Histórico de Pomodoro eliminado.', 'info');
 }

@@ -1,627 +1,1012 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pomodoro Pro — Enfoque con Control Manual</title>
-  <meta name="description" content="Temporizador Pomodoro con control manual, histórico exacto y reportes gráficos de enfoque." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Pomodoro Pro — Productividad Diaria</title>
+  <meta name="description" content="PWA local-first de productividad personal: Top 3 diario, temporizador Pomodoro, hábitos, cierre del día y reportes gráficos 100% offline." />
   <meta name="theme-color" content="#09090b" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Pomodoro Pro" />
-  <!-- Favicons e íconos para accesos directos móviles (Android / iOS) -->
+
+  <!-- Favicons e íconos PWA (Android / iOS) -->
   <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16x16.png" />
   <link rel="shortcut icon" href="assets/icons/favicon.ico" />
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="js/tailwind-config.js"></script>
-  <!-- Fuente Inter & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
-  <!-- Estilos personalizados -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Estilos 100% locales (cero dependencias externas para modo avión) -->
   <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body class="bg-zinc-950 text-zinc-100 font-sans antialiased min-h-screen flex flex-col selection:bg-rose-500/30 selection:text-rose-200">
+<body>
 
   <!-- Contenedor de notificaciones Toast -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none px-2 sm:px-0"></div>
+  <div id="toast-container" class="toast-container"></div>
 
-  <!-- Tooltip flotante para gráficos de reportes -->
-  <div id="report-tooltip" class="hidden fixed z-50 pointer-events-none bg-zinc-900/95 border border-zinc-700/90 rounded-xl px-3 py-2 shadow-2xl backdrop-blur-md max-w-xs"></div>
+  <!-- Tooltip flotante para gráficos y mapa de calor -->
+  <div id="report-tooltip" class="hidden"></div>
 
-  <!-- Barra de navegación superior -->
-  <header class="sticky top-0 z-30 backdrop-blur-md bg-zinc-950/85 border-b border-zinc-800/80">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-      <!-- Logo / Título -->
-      <div class="flex items-center gap-2.5">
-        <div id="brand-dot" class="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 transition-colors">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+  <!-- ==================== CABECERA SUPERIOR ==================== -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-wrap">
+        <div id="brand-dot" class="brand-dot">
+          <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
             <circle cx="12" cy="13" r="8" />
             <path stroke-linecap="round" d="M12 9v4l2.5 1.5M9.5 3h5M12 3v2" />
           </svg>
         </div>
         <div>
-          <h1 class="text-sm sm:text-base font-bold tracking-tight text-zinc-100 leading-none">Pomodoro Pro</h1>
-          <p class="text-[11px] text-zinc-400 mt-0.5 hidden sm:block">Control manual &amp; histórico exacto</p>
+          <h1 class="brand-title">Pomodoro Pro</h1>
+          <p class="brand-subtitle">Local-first · 100% offline</p>
         </div>
       </div>
 
-      <!-- Pestañas de navegación -->
-      <nav class="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800" aria-label="Navegación principal">
-        <button id="tab-timer" onclick="switchTab('timer')" class="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-zinc-800 text-zinc-100 shadow-sm">
-          Temporizador
+      <div class="header-actions">
+        <!-- Mini indicador de temporizador activo cuando se está en otra pestaña -->
+        <button id="header-mini-timer" type="button" onclick="switchTab('focus')" class="header-mini-timer font-mono hidden" title="Volver al temporizador">
+          <span class="dot dot-rose animate-pulse-dot"></span>
+          <span id="header-mini-timer-text">25:00</span>
         </button>
-        <button id="tab-history" onclick="switchTab('history')" class="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5">
-          Histórico
-          <span id="history-badge" class="px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-zinc-800 text-zinc-300">0</span>
-        </button>
-      </nav>
 
-      <!-- Control de sonido -->
-      <button id="sound-toggle-btn" onclick="toggleSound()" title="Activar/Silenciar alarmas" class="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition-colors">
-        <svg id="icon-sound-on" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
-        </svg>
-        <svg id="icon-sound-off" class="w-4 h-4 hidden text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
-        </svg>
-      </button>
+        <!-- Alternar tema oscuro / claro -->
+        <button type="button" onclick="toggleThemeQuick()" class="icon-btn" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema">
+          <svg id="icon-theme-sun" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4" />
+            <path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg id="icon-theme-moon" class="hidden" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+          </svg>
+        </button>
+
+        <!-- Control de sonido -->
+        <button id="sound-toggle-btn" type="button" onclick="toggleSound()" class="icon-btn" title="Activar/Silenciar alarmas" aria-label="Sonido">
+          <svg id="icon-sound-on" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
+          </svg>
+          <svg id="icon-sound-off" class="hidden" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
-  <!-- Contenido principal -->
-  <main class="flex-1 w-full max-w-4xl mx-auto px-4 py-6 sm:py-8">
+  <!-- ==================== CONTENIDO PRINCIPAL ==================== -->
+  <main class="app-main">
 
-    <!-- ==================== VISTA 1: TEMPORIZADOR ==================== -->
-    <section id="view-timer" class="space-y-6">
+    <!-- ================================================================ -->
+    <!-- MÓDULO 1: HOY (TOP 3 DIARIO + CHECKLIST GENERAL + ROLLOVER)      -->
+    <!-- ================================================================ -->
+    <section id="view-today" class="view-section">
+      <div class="row-between">
+        <div>
+          <h2 class="section-title" style="font-size:20px;">Hoy</h2>
+          <p id="today-date-label" class="section-subtitle"></p>
+        </div>
+        <button type="button" onclick="openTaskModal('general')" class="btn btn-sm btn-secondary">
+          + Nueva tarea
+        </button>
+      </div>
 
-      <!-- SUBVISTA A: CONFIGURACIÓN DE CARGA (Antes de iniciar) -->
-      <div id="setup-panel" class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 sm:p-7 shadow-xl">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-zinc-800/80">
+      <!-- Banner de gestión de pendientes de días anteriores -->
+      <div id="rollover-banner" class="rollover-banner hidden">
+        <div class="row-between">
           <div>
-            <h2 class="text-lg sm:text-xl font-bold text-zinc-100">Configurar nueva carga</h2>
-            <p class="text-xs sm:text-sm text-zinc-400 mt-0.5">Define tus bloques antes de preparar el temporizador. Nada arrancará solo.</p>
+            <strong style="font-size:13px;color:var(--amber-text);">Pendientes de días anteriores</strong>
+            <p id="rollover-count-text" class="muted-text" style="margin:2px 0 0;"></p>
           </div>
-          <!-- Interruptor Modo Prueba -->
-          <label class="inline-flex items-center gap-2.5 cursor-pointer select-none bg-zinc-950/70 border border-zinc-800 px-3 py-2 rounded-xl self-start sm:self-auto">
-            <input type="checkbox" id="cfg-test-mode" class="sr-only peer" onchange="onTestModeChange()" />
-            <div class="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all relative peer-checked:bg-amber-500"></div>
-            <span class="text-xs font-medium text-zinc-300">Modo prueba <span class="text-zinc-500">(seg)</span></span>
+        </div>
+        <div class="row-wrap">
+          <button type="button" onclick="moveAllCarryoverToToday()" class="btn btn-sm btn-amber">Mover todo a Hoy</button>
+          <button type="button" onclick="openRolloverModal()" class="btn btn-sm btn-secondary">Revisar</button>
+          <button type="button" onclick="discardAllCarryover()" class="btn btn-sm btn-danger-soft">Descartar</button>
+        </div>
+      </div>
+
+      <!-- Bloque fijo: TOP 3 DIARIO (límite estricto de 3) -->
+      <div class="card top3-card">
+        <div class="card-header" style="margin-bottom:10px;">
+          <div>
+            <div class="row-wrap" style="gap:7px;">
+              <h3 class="section-title">Top 3 Diario</h3>
+              <span class="badge badge-rose">Máx. 3</span>
+            </div>
+            <p class="section-subtitle">Tus 3 tareas críticas que definen un día exitoso.</p>
+          </div>
+          <button id="btn-add-top3" type="button" onclick="openTaskModal('top3')" class="btn btn-sm btn-primary">+ Top 3</button>
+        </div>
+
+        <div class="row-between" style="margin-bottom:8px;">
+          <span class="tiny-text">Progreso de prioridades</span>
+          <span id="top3-counter" class="font-mono tiny-text" style="font-weight:700;color:var(--rose-text);">0/3 completadas</span>
+        </div>
+        <div class="progress-bar-track" style="margin-bottom:12px;">
+          <div id="top3-progress-bar" class="progress-bar-fill" style="width:0%;"></div>
+        </div>
+
+        <div id="top3-list" class="stack-sm"></div>
+      </div>
+
+      <!-- Checklist General -->
+      <div class="card">
+        <div class="card-header" style="margin-bottom:10px;">
+          <div>
+            <h3 class="section-title">Checklist General</h3>
+            <p class="section-subtitle">Desliza derecha para completar o izquierda para posponer a mañana.</p>
+          </div>
+          <span id="general-counter" class="badge font-mono">0/0</span>
+        </div>
+        <div id="general-list" class="stack-sm"></div>
+      </div>
+
+      <!-- Pospuestas para mañana -->
+      <details id="tomorrow-tasks-wrap" class="card hidden" style="padding:14px 16px;">
+        <summary class="row-between" style="font-size:13px;font-weight:600;">
+          <span>Programadas para mañana (<span id="tomorrow-tasks-count">0</span>)</span>
+          <span class="tiny-text when-closed">Mostrar ▾</span>
+          <span class="tiny-text when-open">Ocultar ▴</span>
+        </summary>
+        <div id="tomorrow-tasks-list" style="margin-top:8px;"></div>
+      </details>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- MÓDULO 2: ENFOQUE (TEMPORIZADOR POMODORO)                        -->
+    <!-- ================================================================ -->
+    <section id="view-focus" class="view-section hidden">
+
+      <!-- SUBVISTA A: CONFIGURACIÓN DE CARGA -->
+      <div id="setup-panel" class="card stack-md">
+        <div class="row-between" style="padding-bottom:12px;border-bottom:1px solid var(--border-subtle);">
+          <div>
+            <h2 class="section-title">Configurar bloque de enfoque</h2>
+            <p class="section-subtitle">Control manual total: nada inicia solo.</p>
+          </div>
+          <label class="switch switch-amber">
+            <input type="checkbox" id="cfg-test-mode" onchange="onTestModeChange()" />
+            <span class="switch-track"></span>
+            <span class="tiny-text" style="font-weight:600;color:var(--text-secondary);">Prueba (seg)</span>
           </label>
         </div>
 
+        <!-- Vinculación con tarea del checklist -->
+        <div>
+          <label for="cfg-linked-task" class="field-label">Vincular con una tarea de Hoy (opcional)</label>
+          <select id="cfg-linked-task" onchange="onLinkedTaskChange('cfg-linked-task')" class="select">
+            <option value="">Sin tarea vinculada</option>
+          </select>
+        </div>
+
         <!-- Cantidad de Pomodoros -->
-        <div class="mt-6">
-          <div class="flex items-center justify-between mb-2">
-            <label for="cfg-count" class="text-sm font-medium text-zinc-200">Cantidad de Pomodoros en la carga</label>
-            <span id="cfg-count-display" class="text-sm font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 rounded-lg">4 bloques</span>
+        <div>
+          <div class="row-between" style="margin-bottom:6px;">
+            <label for="cfg-count" class="field-label" style="margin:0;">Cantidad de bloques en la carga</label>
+            <span id="cfg-count-display" class="badge badge-rose font-mono">4 bloques</span>
           </div>
-          <div class="flex items-center gap-3">
-            <button type="button" onclick="adjustCount(-1)" class="w-10 h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-lg flex items-center justify-center transition-colors shrink-0">−</button>
-            <input type="range" id="cfg-count" min="1" max="12" value="4" oninput="syncCountDisplay()" class="w-full accent-rose-500 cursor-pointer h-2 bg-zinc-800 rounded-lg" />
-            <button type="button" onclick="adjustCount(1)" class="w-10 h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-lg flex items-center justify-center transition-colors shrink-0">+</button>
+          <div class="range-row">
+            <button type="button" onclick="adjustCount(-1)" class="icon-btn" style="font-size:18px;font-weight:700;">−</button>
+            <input type="range" id="cfg-count" min="1" max="12" value="4" oninput="syncCountDisplay()" class="range-input" />
+            <button type="button" onclick="adjustCount(1)" class="icon-btn" style="font-size:18px;font-weight:700;">+</button>
           </div>
         </div>
 
         <!-- Duraciones configurables -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6">
-          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
-            <label for="cfg-pomo" class="block text-xs font-medium text-zinc-400 mb-1.5">Pomodoro (<span class="unit-label">min</span>)</label>
-            <input type="number" id="cfg-pomo" min="1" max="180" value="25" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-rose-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+        <div class="grid-4">
+          <div class="card-inset">
+            <label for="cfg-pomo" class="field-label">Enfoque (<span class="unit-label">min</span>)</label>
+            <input type="number" id="cfg-pomo" min="1" max="180" value="25" class="input font-mono" style="font-weight:700;" />
           </div>
-          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
-            <label for="cfg-short" class="block text-xs font-medium text-zinc-400 mb-1.5">Descanso corto (<span class="unit-label">min</span>)</label>
-            <input type="number" id="cfg-short" min="1" max="60" value="5" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-emerald-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          <div class="card-inset">
+            <label for="cfg-short" class="field-label">Corto (<span class="unit-label">min</span>)</label>
+            <input type="number" id="cfg-short" min="1" max="60" value="5" class="input font-mono" style="font-weight:700;" />
           </div>
-          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
-            <label for="cfg-long" class="block text-xs font-medium text-zinc-400 mb-1.5">Descanso largo (<span class="unit-label">min</span>)</label>
-            <input type="number" id="cfg-long" min="1" max="90" value="15" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-emerald-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          <div class="card-inset">
+            <label for="cfg-long" class="field-label">Largo (<span class="unit-label">min</span>)</label>
+            <input type="number" id="cfg-long" min="1" max="90" value="15" class="input font-mono" style="font-weight:700;" />
           </div>
-          <div class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl p-3.5">
-            <label for="cfg-long-every" class="block text-xs font-medium text-zinc-400 mb-1.5">Largo cada (bloques)</label>
-            <input type="number" id="cfg-long-every" min="2" max="12" value="4" class="w-full bg-zinc-900 border border-zinc-700/80 focus:border-zinc-500 focus:outline-none rounded-lg px-3 py-2 text-base font-mono font-semibold text-zinc-100" />
+          <div class="card-inset">
+            <label for="cfg-long-every" class="field-label">Largo cada</label>
+            <input type="number" id="cfg-long-every" min="2" max="12" value="4" class="input font-mono" style="font-weight:700;" />
           </div>
         </div>
 
         <!-- Etiqueta / Categoría -->
-        <div class="mt-6">
-          <label for="cfg-tag" class="block text-sm font-medium text-zinc-200 mb-2">Etiqueta o categoría</label>
-          <div class="flex flex-wrap gap-2 mb-3" id="quick-tags">
-            <button type="button" onclick="selectTag('Trabajo')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Trabajo</button>
-            <button type="button" onclick="selectTag('Estudio')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Estudio</button>
-            <button type="button" onclick="selectTag('Código')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Código</button>
-            <button type="button" onclick="selectTag('Lectura')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Lectura</button>
-            <button type="button" onclick="selectTag('Idiomas')" class="tag-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80 hover:border-rose-500/60 transition-colors">Idiomas</button>
+        <div>
+          <label for="cfg-tag" class="field-label">Etiqueta o categoría</label>
+          <div class="row-wrap" style="margin-bottom:8px;">
+            <button type="button" onclick="selectTag('Trabajo')" class="tag-chip">Trabajo</button>
+            <button type="button" onclick="selectTag('Estudio')" class="tag-chip">Estudio</button>
+            <button type="button" onclick="selectTag('Código')" class="tag-chip">Código</button>
+            <button type="button" onclick="selectTag('Lectura')" class="tag-chip">Lectura</button>
+            <button type="button" onclick="selectTag('Idiomas')" class="tag-chip">Idiomas</button>
           </div>
-          <input type="text" id="cfg-tag" value="Trabajo" maxlength="40" placeholder="Escribe una etiqueta personalizada..." class="w-full bg-zinc-950/70 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500" />
+          <input type="text" id="cfg-tag" value="Trabajo" maxlength="40" placeholder="Escribe una etiqueta personalizada..." class="input" />
         </div>
 
-        <!-- Botón Preparar Carga -->
-        <div class="mt-7 pt-5 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p id="setup-summary" class="text-xs text-zinc-400 text-center sm:text-left">
-            4 pomodoros de 25 min · Descansos de 5 / 15 min
-          </p>
-          <button type="button" onclick="prepareBatch()" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-400 active:scale-[0.99] text-white font-semibold text-sm shadow-lg shadow-rose-500/20 transition-all flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+        <!-- Interruptor Wake Lock (Pantalla Activa) -->
+        <div class="card-inset row-between">
+          <div>
+            <div style="font-size:13px;font-weight:600;">Mantener pantalla activa (Wake Lock)</div>
+            <div class="tiny-text">Evita que la pantalla se apague mientras corre el temporizador.</div>
+          </div>
+          <label class="switch switch-emerald">
+            <input type="checkbox" id="cfg-wake-lock" onchange="toggleWakeLockPref(this)" />
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <div class="row-between" style="padding-top:10px;border-top:1px solid var(--border-subtle);">
+          <p id="setup-summary" class="muted-text" style="margin:0;">4 pomodoros de 25 min · Descansos 5 / 15 min</p>
+          <button type="button" onclick="prepareBatch()" class="btn btn-lg btn-primary">
             Preparar carga
           </button>
         </div>
       </div>
 
       <!-- SUBVISTA B: TEMPORIZADOR ACTIVO / EN ESPERA -->
-      <div id="active-panel" class="hidden bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 sm:p-8 shadow-xl transition-colors duration-300">
-        <!-- Encabezado de estado y metadatos -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div class="flex items-center gap-2.5">
-            <span id="status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30">
-              <span id="status-pulse" class="w-2 h-2 rounded-full bg-rose-400"></span>
-              <span id="status-text">Listo para Pomodoro 1 / 4</span>
+      <div id="active-panel" class="card hidden stack-md">
+        <div class="row-between">
+          <div class="row-wrap" style="gap:6px;">
+            <span id="status-badge" class="badge badge-rose">
+              <span id="status-pulse" class="dot dot-rose"></span>
+              <span id="status-text">Listo · Pomodoro 1/4</span>
             </span>
-            <span id="active-tag-badge" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/70">
-              Trabajo
-            </span>
-            <span id="test-mode-indicator" class="hidden px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
-              Prueba (s)
-            </span>
+            <span id="active-tag-badge" class="badge">Trabajo</span>
+            <span id="test-mode-indicator" class="badge badge-amber hidden">Prueba (s)</span>
           </div>
-
-          <button type="button" id="btn-cancel-batch" onclick="openCancelBatchModal()" class="text-xs font-medium text-zinc-400 hover:text-zinc-200 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors">
-            Cambiar carga
-          </button>
+          <button type="button" onclick="openCancelBatchModal()" class="btn btn-sm btn-ghost">Cambiar carga</button>
         </div>
 
-        <!-- Anillo de progreso circular y reloj -->
-        <div class="flex flex-col items-center justify-center my-4 sm:my-6">
-          <div class="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
-            <svg class="w-full h-full" viewBox="0 0 260 260">
-              <!-- Fondo del anillo -->
-              <circle cx="130" cy="130" r="114" fill="none" stroke="#27272a" stroke-width="10" />
-              <!-- Progreso -->
-              <circle id="progress-ring" class="progress-ring-circle" cx="130" cy="130" r="114" fill="none" stroke="#f43f5e" stroke-width="10" stroke-linecap="round" stroke-dasharray="716.28" stroke-dashoffset="0" />
-            </svg>
-            <!-- Texto central -->
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
-              <span id="phase-subtitle" class="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-1">Enfoque</span>
-              <div id="timer-display" class="text-5xl sm:text-6xl font-mono font-bold tracking-tight text-zinc-50 tabular-nums">
-                25:00
-              </div>
-              <div id="pause-meta" class="mt-2 text-xs font-medium text-amber-400 min-h-[18px]"></div>
-            </div>
+        <!-- Banner de tarea vinculada -->
+        <div id="active-task-banner" class="card-inset row-between hidden">
+          <div style="min-width:0;">
+            <div class="tiny-text">Enfocando en tarea</div>
+            <div id="active-task-title" style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+          </div>
+          <span class="badge badge-rose">Vinculada</span>
+        </div>
+
+        <!-- Cambio rápido de tarea cuando el bloque aún no ha arrancado -->
+        <div id="active-task-selector-wrap">
+          <label for="active-linked-task" class="field-label">Tarea vinculada a este bloque</label>
+          <select id="active-linked-task" onchange="onLinkedTaskChange('active-linked-task')" class="select" style="font-size:13px;padding:8px 10px;">
+            <option value="">Sin tarea vinculada</option>
+          </select>
+        </div>
+
+        <!-- Anillo de progreso circular -->
+        <div class="ring-wrap">
+          <svg width="100%" height="100%" viewBox="0 0 260 260">
+            <circle cx="130" cy="130" r="114" fill="none" stroke="var(--ring-track)" stroke-width="10" />
+            <circle id="progress-ring" class="progress-ring-circle" cx="130" cy="130" r="114" fill="none" stroke="var(--rose)" stroke-width="10" stroke-linecap="round" stroke-dasharray="716.28" stroke-dashoffset="0" />
+          </svg>
+          <div class="ring-center">
+            <span id="phase-subtitle" class="tiny-text" style="font-weight:700;letter-spacing:0.08em;">ENFOQUE</span>
+            <div id="timer-display" class="timer-digits font-mono">25:00</div>
+            <div id="pause-meta" class="tiny-text" style="color:var(--amber-text);min-height:16px;margin-top:4px;font-weight:600;"></div>
           </div>
         </div>
 
-        <!-- Indicador visual de bloques de la carga -->
-        <div class="flex flex-col items-center gap-2 mb-7">
-          <div id="batch-blocks-indicator" class="flex items-center justify-center flex-wrap gap-2"></div>
-          <p id="batch-progress-label" class="text-xs text-zinc-400">Bloque 1 de 4</p>
+        <!-- Progreso de bloques -->
+        <div style="text-align:center;">
+          <div id="batch-blocks-indicator" class="batch-dots"></div>
+          <p id="batch-progress-label" class="tiny-text" style="margin:6px 0 0;">Bloque 1 de 4</p>
         </div>
 
-        <!-- Controles principales (cambian según el estado) -->
-        <div id="timer-controls" class="flex flex-wrap items-center justify-center gap-3">
-          <!-- Inyectados dinámicamente según la máquina de estados -->
+        <!-- Controles principales -->
+        <div id="timer-controls" class="timer-controls-grid"></div>
+
+        <!-- Toggle rápido Wake Lock -->
+        <div class="row-between" style="padding-top:10px;border-top:1px solid var(--border-subtle);">
+          <span class="tiny-text">Mantener pantalla activa</span>
+          <label class="switch switch-emerald">
+            <input type="checkbox" id="active-wake-lock" onchange="toggleWakeLockPref(this)" />
+            <span class="switch-track"></span>
+          </label>
         </div>
       </div>
 
       <!-- SUBVISTA C: CARGA COMPLETADA -->
-      <div id="completed-panel" class="hidden bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-6 sm:p-10 text-center shadow-xl">
-        <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4">
-          <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <h2 class="text-2xl font-bold text-zinc-100">¡Carga completada!</h2>
-        <p id="completed-summary" class="text-sm text-zinc-400 mt-2 max-w-md mx-auto">
-          Has finalizado todos los bloques planificados y tu histórico ya está guardado con fecha y hora exacta.
-        </p>
-        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <button type="button" onclick="resetToSetup()" class="px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-sm shadow-lg shadow-rose-500/20 transition-all">
-            Configurar nueva carga
-          </button>
-          <button type="button" onclick="switchTab('history')" class="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors">
-            Ver histórico
-          </button>
+      <div id="completed-panel" class="card hidden" style="text-align:center;padding:30px 20px;border-color:var(--emerald-border);">
+        <div style="font-size:38px;margin-bottom:8px;">🎉</div>
+        <h2 class="section-title" style="font-size:20px;">¡Carga completada!</h2>
+        <p id="completed-summary" class="muted-text" style="max-width:400px;margin:8px auto 18px;"></p>
+        <div class="row-wrap" style="justify-content:center;">
+          <button type="button" onclick="resetToSetup()" class="btn btn-lg btn-primary">Nueva carga</button>
+          <button type="button" onclick="switchTab('progress'); switchProgressSubTab('reports');" class="btn btn-lg btn-secondary">Ver reportes</button>
         </div>
       </div>
 
-      <!-- Resumen rápido del día (siempre visible debajo del temporizador) -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <div class="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p class="text-xs text-zinc-400 font-medium">Pomodoros hoy</p>
-            <p id="today-pomos-count" class="text-2xl font-bold font-mono text-zinc-100 mt-1">0</p>
-          </div>
-          <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
+      <!-- Resumen rápido de enfoque hoy -->
+      <div class="grid-3">
+        <div class="kpi-card">
+          <div class="tiny-text">Pomodoros hoy</div>
+          <div id="today-pomos-count" class="kpi-value font-mono" style="color:var(--rose);">0</div>
         </div>
-        <div class="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p class="text-xs text-zinc-400 font-medium">Enfoque efectivo hoy</p>
-            <p id="today-focus-time" class="text-2xl font-bold font-mono text-zinc-100 mt-1">0m</p>
-          </div>
-          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="9" />
-              <path stroke-linecap="round" d="M12 7v5l3 2" />
-            </svg>
-          </div>
+        <div class="kpi-card">
+          <div class="tiny-text">Enfoque hoy</div>
+          <div id="today-focus-time" class="kpi-value font-mono">0m</div>
         </div>
-        <div class="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p class="text-xs text-zinc-400 font-medium">Descansos hoy</p>
-            <p id="today-breaks-count" class="text-2xl font-bold font-mono text-zinc-100 mt-1">0</p>
-          </div>
-          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" />
-            </svg>
-          </div>
+        <div class="kpi-card">
+          <div class="tiny-text">Descansos hoy</div>
+          <div id="today-breaks-count" class="kpi-value font-mono" style="color:var(--emerald);">0</div>
         </div>
       </div>
     </section>
 
-    <!-- ==================== VISTA 2: HISTÓRICO ==================== -->
-    <section id="view-history" class="hidden space-y-5">
-      <!-- Encabezado y botones de exportación -->
-      <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <!-- ================================================================ -->
+    <!-- MÓDULO 3: HÁBITOS DIARIOS Y RITUAL DE CIERRE DEL DÍA             -->
+    <!-- ================================================================ -->
+    <section id="view-habits" class="view-section hidden">
+      <div class="row-between">
         <div>
-          <h2 class="text-lg sm:text-xl font-bold text-zinc-100">Histórico detallado</h2>
-          <p class="text-xs sm:text-sm text-zinc-400 mt-0.5">Registro exacto de fecha, hora de inicio/fin, descansos, pausas y reportes gráficos.</p>
+          <h2 class="section-title" style="font-size:20px;">Hábitos y Cierre</h2>
+          <p class="section-subtitle">Consistencia diaria con reinicio automático y rachas.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <button type="button" onclick="exportHistory('json')" class="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-colors flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-            </svg>
-            JSON
-          </button>
-          <button type="button" onclick="exportHistory('csv')" class="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-colors flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-            </svg>
-            CSV
-          </button>
-          <button type="button" onclick="openClearHistoryModal()" class="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition-colors">
-            Limpiar
-          </button>
-        </div>
-      </div>
-
-      <!-- Sub-navegación del Histórico: Log de auditoría vs Reportes gráficos -->
-      <div class="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800 w-full sm:w-fit" role="tablist" aria-label="Secciones del histórico">
-        <button id="subtab-audit" type="button" onclick="switchHistorySubTab('audit')" class="flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-zinc-800 text-zinc-100 shadow-sm flex items-center justify-center gap-2">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6" />
-          </svg>
-          Log de auditoría
-        </button>
-        <button id="subtab-reports" type="button" onclick="switchHistorySubTab('reports')" class="flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all text-zinc-400 hover:text-zinc-200 flex items-center justify-center gap-2">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-          </svg>
-          Reportes gráficos
+        <button type="button" onclick="switchTab('progress'); switchProgressSubTab('settings');" class="btn btn-sm btn-secondary">
+          Editar hábitos
         </button>
       </div>
 
-      <!-- SUBSECCIÓN 1: LOG DE AUDITORÍA (existente) -->
-      <div id="history-panel-audit" class="space-y-4">
-        <!-- Filtros -->
-        <div class="flex flex-col sm:flex-row gap-3">
-          <div class="flex-1">
-            <label for="filter-type" class="sr-only">Filtrar por tipo</label>
-            <select id="filter-type" onchange="renderHistory()" class="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-200">
+      <!-- Lista de hábitos del día -->
+      <div class="card">
+        <div class="card-header" style="margin-bottom:10px;">
+          <div>
+            <h3 class="section-title">Hábitos de hoy</h3>
+            <p class="section-subtitle">Marca con 1 toque para sumar a tu racha actual.</p>
+          </div>
+          <span id="habits-today-counter" class="badge badge-emerald font-mono">0/0 hoy</span>
+        </div>
+        <div class="progress-bar-track" style="margin-bottom:14px;">
+          <div id="habits-today-bar" class="progress-bar-fill is-emerald" style="width:0%;"></div>
+        </div>
+        <div id="habits-list" class="stack-sm"></div>
+      </div>
+
+      <!-- Ritual de Cierre (Shutdown) -->
+      <div class="card stack-md">
+        <div class="card-header" style="margin-bottom:0;">
+          <div>
+            <div class="row-wrap" style="gap:7px;">
+              <h3 class="section-title">Ritual de Cierre del Día</h3>
+              <span id="shutdown-status-badge" class="badge">Pendiente</span>
+            </div>
+            <p class="section-subtitle">Revisa tu avance de hoy, registra tu energía (1–5) y una reflexión breve.</p>
+          </div>
+        </div>
+
+        <div id="shutdown-today-preview"></div>
+
+        <button id="btn-open-shutdown" type="button" onclick="openShutdownModal()" class="btn btn-lg btn-primary btn-block">
+          Cerrar día
+        </button>
+      </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- MÓDULO 4: PROGRESO, REPORTES GRÁFICOS, AUDITORÍA Y AJUSTES       -->
+    <!-- ================================================================ -->
+    <section id="view-progress" class="view-section hidden">
+      <div class="row-between">
+        <div>
+          <h2 class="section-title" style="font-size:20px;">Progreso y Ajustes</h2>
+          <p class="section-subtitle">Métricas 7/30d, tiempos efectivos vs. muertos, auditoría y respaldo.</p>
+        </div>
+        <span class="badge font-mono">Logs: <span id="history-badge">0</span></span>
+      </div>
+
+      <!-- Sub-navegación de Progreso -->
+      <div class="segmented segmented-scroll" role="tablist">
+        <button id="subtab-overview" type="button" onclick="switchProgressSubTab('overview')" class="segmented-btn is-active">Resumen</button>
+        <button id="subtab-reports" type="button" onclick="switchProgressSubTab('reports')" class="segmented-btn">Reportes</button>
+        <button id="subtab-audit" type="button" onclick="switchProgressSubTab('audit')" class="segmented-btn">Auditoría</button>
+        <button id="subtab-settings" type="button" onclick="switchProgressSubTab('settings')" class="segmented-btn">Ajustes</button>
+      </div>
+
+      <!-- SUBPESTAÑA 1: RESUMEN (7d / 30d + MAPA DE CALOR DE HÁBITOS) -->
+      <div id="progress-panel-overview" class="stack-md">
+        <div class="row-between">
+          <span class="muted-text">Ventana de métricas</span>
+          <div class="segmented" style="width:auto;">
+            <button id="prog-range-7" type="button" onclick="setProgressRange(7)" class="segmented-btn is-active">7 días</button>
+            <button id="prog-range-30" type="button" onclick="setProgressRange(30)" class="segmented-btn">30 días</button>
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div class="kpi-card">
+            <div class="tiny-text">Enfoque total</div>
+            <div id="prog-focus-time" class="kpi-value font-mono" style="color:var(--rose);">0m</div>
+            <div id="prog-focus-sub" class="tiny-text">0 bloques</div>
+          </div>
+          <div class="kpi-card">
+            <div class="tiny-text">Cumplimiento Top 3</div>
+            <div id="prog-top3-pct" class="kpi-value font-mono">0%</div>
+            <div class="progress-bar-track" style="margin:6px 0 4px;">
+              <div id="prog-top3-bar" class="progress-bar-fill" style="width:0%;"></div>
+            </div>
+            <div id="prog-top3-sub" class="tiny-text">0/0 tareas</div>
+          </div>
+          <div class="kpi-card">
+            <div class="tiny-text">Hábitos cumplidos</div>
+            <div id="prog-habits-pct" class="kpi-value font-mono" style="color:var(--emerald);">0%</div>
+            <div id="prog-habits-sub" class="tiny-text">0/0 checks</div>
+          </div>
+          <div class="kpi-card">
+            <div class="tiny-text">Energía promedio</div>
+            <div id="prog-mood-avg" class="kpi-value font-mono" style="color:var(--indigo-text);">—</div>
+            <div id="prog-mood-sub" class="tiny-text">Sin cierres</div>
+          </div>
+        </div>
+
+        <!-- Mapa de calor (Calendario visual de hábitos) -->
+        <div class="card">
+          <div class="card-header" style="margin-bottom:10px;">
+            <div>
+              <h3 class="section-title">Mapa de calor de hábitos</h3>
+              <p id="habits-heatmap-subtitle" class="section-subtitle"></p>
+            </div>
+          </div>
+          <div class="heatmap-weekdays">
+            <span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span>
+          </div>
+          <div id="habits-heatmap-grid" class="heatmap-grid"></div>
+          <div class="heatmap-legend">
+            <span>Menos</span>
+            <span class="heatmap-swatch" style="background:var(--heat-0);"></span>
+            <span class="heatmap-swatch" style="background:var(--heat-1);"></span>
+            <span class="heatmap-swatch" style="background:var(--heat-2);"></span>
+            <span class="heatmap-swatch" style="background:var(--heat-3);"></span>
+            <span class="heatmap-swatch" style="background:var(--heat-4);"></span>
+            <span>100%</span>
+          </div>
+        </div>
+
+        <!-- Reflexiones y cierres recientes -->
+        <div class="card">
+          <div class="card-header" style="margin-bottom:6px;">
+            <div>
+              <h3 class="section-title">Cierres diarios recientes</h3>
+              <p class="section-subtitle">Historial de energía y reflexiones del ritual Shutdown.</p>
+            </div>
+          </div>
+          <div id="recent-shutdowns-list"></div>
+        </div>
+      </div>
+
+      <!-- SUBPESTAÑA 2: REPORTES GRÁFICOS DE ENFOQUE (TRABAJO VS TIEMPO MUERTO) -->
+      <div id="progress-panel-reports" class="hidden stack-md">
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div class="segmented" style="width:auto;">
+              <button id="report-period-today" type="button" onclick="setReportPeriod('today')" class="segmented-btn">Hoy</button>
+              <button id="report-period-7d" type="button" onclick="setReportPeriod('7d')" class="segmented-btn">7d</button>
+              <button id="report-period-30d" type="button" onclick="setReportPeriod('30d')" class="segmented-btn">30d</button>
+              <button id="report-period-all" type="button" onclick="setReportPeriod('all')" class="segmented-btn is-active">Todo</button>
+            </div>
+            <div style="min-width:165px;">
+              <label for="report-filter-tag" class="sr-only">Etiqueta</label>
+              <select id="report-filter-tag" onchange="onReportTagChange()" class="select" style="font-size:12px;padding:7px 10px;">
+                <option value="all">Todas las etiquetas</option>
+              </select>
+            </div>
+          </div>
+          <div class="divider" style="margin:6px 0;"></div>
+          <div class="row-between">
+            <div class="segmented" style="width:auto;">
+              <button id="report-scope-day" type="button" onclick="setReportIdleScope('day')" class="segmented-btn is-active">Jornada del día</button>
+              <button id="report-scope-batch" type="button" onclick="setReportIdleScope('batch')" class="segmented-btn">Solo por carga</button>
+            </div>
+            <span id="report-scope-hint" class="tiny-text"></span>
+          </div>
+        </div>
+
+        <div id="reports-empty" class="card hidden" style="text-align:center;padding:32px 18px;">
+          <p style="margin:0;font-weight:600;font-size:14px;">Sin datos de Pomodoro en este filtro</p>
+          <p class="muted-text" style="margin:6px 0 0;">Completa uno o más bloques de enfoque para ver los gráficos de tiempo efectivo vs. tiempo muerto.</p>
+        </div>
+
+        <div id="reports-content" class="stack-md">
+          <div class="grid-4">
+            <div class="kpi-card">
+              <div class="row-between"><span class="tiny-text">Trabajo efectivo</span><span id="kpi-focus-pct" class="badge badge-rose font-mono">0%</span></div>
+              <div id="kpi-focus-time" class="kpi-value font-mono">0m</div>
+              <div id="kpi-focus-sub" class="tiny-text">0 comp. · 0 inc.</div>
+            </div>
+            <div class="kpi-card">
+              <div class="row-between"><span class="tiny-text">Descansos</span><span id="kpi-break-pct" class="badge badge-emerald font-mono">0%</span></div>
+              <div id="kpi-break-time" class="kpi-value font-mono">0m</div>
+              <div id="kpi-break-sub" class="tiny-text">0 cortos · 0 largos</div>
+            </div>
+            <div class="kpi-card">
+              <div class="row-between"><span class="tiny-text">Tiempo muerto</span><span id="kpi-dead-pct" class="badge badge-amber font-mono">0%</span></div>
+              <div id="kpi-dead-time" class="kpi-value font-mono">0m</div>
+              <div id="kpi-dead-sub" class="tiny-text">Pausas · Sin avanzar</div>
+            </div>
+            <div class="kpi-card">
+              <div class="row-between"><span class="tiny-text">Eficiencia de flujo</span><span class="dot dot-indigo"></span></div>
+              <div id="kpi-efficiency-pct" class="kpi-value font-mono" style="color:var(--indigo-text);">0%</div>
+              <div id="kpi-efficiency-sub" class="tiny-text">Sin contar descansos</div>
+            </div>
+          </div>
+
+          <div class="grid-2-desktop">
+            <div class="card">
+              <h3 class="sub-heading">Distribución porcentual</h3>
+              <p class="tiny-text" style="margin:2px 0 8px;">Enfoque, descansos, pausas y esperas sin avanzar.</p>
+              <div id="report-donut-svg-wrap"></div>
+              <div id="report-donut-legend"></div>
+            </div>
+
+            <div class="card stack-md">
+              <div>
+                <h3 class="sub-heading">Flujo Pomodoro vs. Tiempo muerto</h3>
+                <p class="tiny-text" style="margin:2px 0 10px;">Tiempo dentro del método frente a pausas y esperas sin avanzar.</p>
+                <div id="report-stacked-bar" class="stacked-bar"></div>
+                <div class="grid-2" style="margin-top:12px;">
+                  <div class="card-inset">
+                    <div class="tiny-text">Flujo (Trabajo + Descansos)</div>
+                    <div class="row-wrap" style="margin-top:4px;align-items:baseline;">
+                      <strong id="compare-flow-pct" class="font-mono" style="font-size:18px;">0%</strong>
+                      <span id="compare-flow-dur" class="font-mono tiny-text">0m</span>
+                    </div>
+                  </div>
+                  <div class="card-inset" style="border-color:var(--amber-border);">
+                    <div class="tiny-text" style="color:var(--amber-text);">Tiempo muerto</div>
+                    <div class="row-wrap" style="margin-top:4px;align-items:baseline;">
+                      <strong id="compare-dead-pct" class="font-mono" style="font-size:18px;color:var(--amber-text);">0%</strong>
+                      <span id="compare-dead-dur" class="font-mono tiny-text">0m</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stack-sm">
+                <div class="card-inset row-between">
+                  <div>
+                    <div style="font-size:12px;font-weight:600;"><span class="dot dot-amber"></span> Pausas en bloques</div>
+                    <div id="dead-pauses-meta" class="tiny-text" style="margin-top:2px;"></div>
+                  </div>
+                  <strong id="dead-pauses-total" class="font-mono" style="color:var(--amber-text);">0s</strong>
+                </div>
+                <div class="card-inset row-between">
+                  <div>
+                    <div style="font-size:12px;font-weight:600;"><span class="dot dot-slate"></span> Sin avanzar entre bloques</div>
+                    <div id="dead-idle-meta" class="tiny-text" style="margin-top:2px;"></div>
+                  </div>
+                  <strong id="dead-idle-total" class="font-mono" style="color:var(--slate-text);">0s</strong>
+                </div>
+                <div>
+                  <div class="row-between tiny-text" style="margin-bottom:5px;">
+                    <span>Tasa de finalización de Pomodoros</span>
+                    <strong id="completion-rate-text" class="font-mono">0%</strong>
+                  </div>
+                  <div class="progress-bar-track">
+                    <div id="completion-rate-bar" class="progress-bar-fill is-emerald" style="width:0%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="row-between" style="margin-bottom:10px;">
+              <div>
+                <h3 class="sub-heading">Evolución por día</h3>
+                <p class="tiny-text" style="margin:2px 0 0;">Toca cualquier día para ver su línea de tiempo.</p>
+              </div>
+              <div class="row-wrap tiny-text">
+                <span><span class="dot dot-rose"></span> Trabajo</span>
+                <span><span class="dot dot-emerald"></span> Descanso</span>
+                <span><span class="dot dot-amber"></span> Pausas</span>
+                <span><span class="dot dot-slate"></span> Sin avanzar</span>
+              </div>
+            </div>
+            <div id="report-daily-chart"></div>
+          </div>
+
+          <div class="card stack-sm">
+            <div class="row-between">
+              <div>
+                <h3 class="sub-heading">Línea de tiempo de la jornada</h3>
+                <p class="tiny-text" style="margin:2px 0 0;">Secuencia exacta de trabajo, descansos, pausas y esperas.</p>
+              </div>
+              <select id="report-timeline-day" onchange="onTimelineDayChange(this.value)" class="select font-mono" style="width:auto;font-size:12px;padding:6px 10px;"></select>
+            </div>
+            <div id="report-timeline-meta" class="row-wrap tiny-text"></div>
+            <div id="report-timeline-strip"></div>
+            <div id="report-timeline-dead-list"></div>
+          </div>
+
+          <div class="card">
+            <h3 class="sub-heading" style="margin-bottom:10px;">Enfoque efectivo por etiqueta</h3>
+            <div id="report-tags-list" class="stack-md"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBPESTAÑA 3: LOG DE AUDITORÍA DE POMODOROS -->
+      <div id="progress-panel-audit" class="hidden stack-md">
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div>
+              <h3 class="sub-heading">Log de auditoría exacto</h3>
+              <p class="tiny-text" style="margin:2px 0 0;">Fecha, hora inicio/fin, tarea vinculada y detalle de cada pausa.</p>
+            </div>
+            <div class="row-wrap">
+              <button type="button" onclick="exportHistory('json')" class="btn btn-sm btn-secondary">JSON</button>
+              <button type="button" onclick="exportHistory('csv')" class="btn btn-sm btn-secondary">CSV</button>
+              <button type="button" onclick="openClearHistoryModal()" class="btn btn-sm btn-danger-soft">Limpiar</button>
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top:6px;">
+            <select id="filter-type" onchange="renderHistory()" class="select" style="font-size:12px;padding:8px 10px;">
               <option value="all">Todos los bloques</option>
               <option value="pomodoro">Solo Pomodoros</option>
               <option value="short_break">Solo Descansos cortos</option>
               <option value="long_break">Solo Descansos largos</option>
             </select>
-          </div>
-          <div class="flex-1">
-            <label for="filter-tag" class="sr-only">Filtrar por etiqueta</label>
-            <select id="filter-tag" onchange="renderHistory()" class="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-200">
+            <select id="filter-tag" onchange="renderHistory()" class="select" style="font-size:12px;padding:8px 10px;">
               <option value="all">Todas las etiquetas</option>
             </select>
           </div>
         </div>
 
-        <!-- Lista de registros -->
-        <div id="history-list" class="space-y-3">
-          <!-- Renderizado dinámicamente -->
-        </div>
+        <div id="history-list" class="stack-sm"></div>
       </div>
 
-      <!-- SUBSECCIÓN 2: REPORTES GRÁFICOS -->
-      <div id="history-panel-reports" class="hidden space-y-5">
-        <!-- Barra de filtros del reporte -->
-        <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-4 space-y-3">
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <!-- Filtro de periodo -->
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-xs font-medium text-zinc-400 mr-1">Periodo:</span>
-              <div class="inline-flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-                <button id="report-period-today" type="button" onclick="setReportPeriod('today')" class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-all">Hoy</button>
-                <button id="report-period-7d" type="button" onclick="setReportPeriod('7d')" class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-all">7 días</button>
-                <button id="report-period-30d" type="button" onclick="setReportPeriod('30d')" class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-all">30 días</button>
-                <button id="report-period-all" type="button" onclick="setReportPeriod('all')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 text-zinc-100 shadow-sm transition-all">Todo</button>
-              </div>
-            </div>
-
-            <!-- Filtro de etiqueta -->
-            <div class="w-full md:w-52">
-              <label for="report-filter-tag" class="sr-only">Filtrar reportes por etiqueta</label>
-              <select id="report-filter-tag" onchange="onReportTagChange()" class="w-full bg-zinc-950 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-3.5 py-2 text-xs text-zinc-200">
-                <option value="all">Todas las etiquetas</option>
-              </select>
+      <!-- SUBPESTAÑA 4: AJUSTES Y PORTABILIDAD DE DATOS -->
+      <div id="progress-panel-settings" class="hidden stack-md">
+        <!-- Portabilidad de Datos (Respaldo Completo JSON) -->
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div>
+              <h3 class="section-title">Respaldo y Portabilidad (.json)</h3>
+              <p class="section-subtitle">Exporta o restaura al 100% tus tareas, hábitos, cierres e historial.</p>
             </div>
           </div>
-
-          <!-- Modo de cálculo del tiempo muerto entre bloques -->
-          <div class="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-xs font-medium text-zinc-400">Inactividad entre bloques:</span>
-              <div class="inline-flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-                <button id="report-scope-day" type="button" onclick="setReportIdleScope('day')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 text-zinc-100 shadow-sm transition-all">Jornada del día</button>
-                <button id="report-scope-batch" type="button" onclick="setReportIdleScope('batch')" class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-all">Solo por carga</button>
-              </div>
-            </div>
-            <p id="report-scope-hint" class="text-[11px] text-zinc-500">
-              Jornada del día: incluye pausas y tiempos sin iniciar entre cualquier bloque del mismo día.
-            </p>
+          <div class="row-wrap" style="margin-top:4px;">
+            <button type="button" onclick="exportFullBackupJson(false)" class="btn btn-primary">Exportar respaldo (.json)</button>
+            <button type="button" onclick="exportFullBackupJson(true)" class="btn btn-secondary">Compartir archivo</button>
+            <button type="button" onclick="triggerImportBackupPicker()" class="btn btn-emerald">Importar respaldo (.json)</button>
+            <input type="file" id="backup-file-input" accept=".json,application/json" class="hidden" onchange="onBackupFileSelected(event)" />
+          </div>
+          <div style="margin-top:6px;">
+            <span id="storage-persist-badge" class="badge">Verificando persistencia...</span>
           </div>
         </div>
 
-        <!-- Estado vacío de reportes -->
-        <div id="reports-empty" class="hidden bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-10 text-center">
-          <p class="text-sm font-medium text-zinc-300">No hay suficientes datos para generar reportes en este filtro</p>
-          <p class="text-xs text-zinc-500 mt-1">Completa uno o más bloques de Pomodoro o ajusta el periodo/etiqueta seleccionada.</p>
+        <!-- Tema visual y alertas -->
+        <div class="card stack-sm">
+          <h3 class="section-title">Apariencia y alertas</h3>
+          <div class="list-row">
+            <span style="font-size:13px;font-weight:600;">Tema de la aplicación</span>
+            <div class="segmented" style="width:168px;">
+              <button id="setting-theme-dark" type="button" onclick="setTheme('dark')" class="segmented-btn is-active">Oscuro</button>
+              <button id="setting-theme-light" type="button" onclick="setTheme('light')" class="segmented-btn">Claro</button>
+            </div>
+          </div>
+          <div class="list-row">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Alarmas sonoras</div>
+              <div class="tiny-text">Tono distintivo al finalizar Pomodoro o descanso.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-sound" onchange="onSettingToggle('soundEnabled', this)" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+          <div class="list-row">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Vibración háptica</div>
+              <div class="tiny-text">Respuesta táctil al completar tareas, hábitos y bloques.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-haptics" onchange="onSettingToggle('hapticsEnabled', this)" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+          <div class="list-row">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Pantalla activa (Wake Lock)</div>
+              <div class="tiny-text">Mantiene la pantalla encendida durante el temporizador.</div>
+            </div>
+            <label class="switch switch-emerald">
+              <input type="checkbox" id="setting-wake-lock" onchange="onSettingToggle('wakeLockEnabled', this)" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+          <div class="list-row">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Notificaciones del navegador</div>
+              <div class="tiny-text">Aviso visual local cuando termina un bloque.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-notifications" onchange="onSettingToggle('notificationsEnabled', this)" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
         </div>
 
-        <!-- Contenido de reportes gráficos -->
-        <div id="reports-content" class="space-y-5">
-
-          <!-- 1. Tarjetas KPI resumen -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-4">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-zinc-400">Trabajo efectivo</span>
-                <span id="kpi-focus-pct" class="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-rose-500/15 text-rose-300 border border-rose-500/25">0%</span>
-              </div>
-              <p id="kpi-focus-time" class="text-2xl font-bold font-mono text-zinc-100 mt-2">0m</p>
-              <p id="kpi-focus-sub" class="text-[11px] text-zinc-500 mt-1">0 completados · 0 incompletos</p>
+        <!-- Tiempos predeterminados de Pomodoro -->
+        <div class="card stack-sm">
+          <h3 class="section-title">Tiempos predeterminados del Pomodoro</h3>
+          <div class="grid-4">
+            <div>
+              <label for="setting-pomo-min" class="field-label">Enfoque (min)</label>
+              <input type="number" id="setting-pomo-min" min="1" max="180" value="25" class="input font-mono" />
             </div>
-
-            <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-4">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-zinc-400">Descansos</span>
-                <span id="kpi-break-pct" class="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">0%</span>
-              </div>
-              <p id="kpi-break-time" class="text-2xl font-bold font-mono text-zinc-100 mt-2">0m</p>
-              <p id="kpi-break-sub" class="text-[11px] text-zinc-500 mt-1">0 cortos · 0 largos</p>
+            <div>
+              <label for="setting-short-min" class="field-label">Desc. corto</label>
+              <input type="number" id="setting-short-min" min="1" max="60" value="5" class="input font-mono" />
             </div>
-
-            <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-4">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-zinc-400">Tiempo muerto</span>
-                <span id="kpi-dead-pct" class="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">0%</span>
-              </div>
-              <p id="kpi-dead-time" class="text-2xl font-bold font-mono text-zinc-100 mt-2">0m</p>
-              <p id="kpi-dead-sub" class="text-[11px] text-zinc-500 mt-1 truncate">Pausas: 0s · Sin avanzar: 0s</p>
+            <div>
+              <label for="setting-long-min" class="field-label">Desc. largo</label>
+              <input type="number" id="setting-long-min" min="1" max="90" value="15" class="input font-mono" />
             </div>
-
-            <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-4">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-zinc-400">Eficiencia de flujo</span>
-                <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
-              </div>
-              <p id="kpi-efficiency-pct" class="text-2xl font-bold font-mono text-indigo-300 mt-2">0%</p>
-              <p id="kpi-efficiency-sub" class="text-[11px] text-zinc-500 mt-1">Enfoque vs. tiempo muerto (sin descansos)</p>
+            <div>
+              <label for="setting-long-every" class="field-label">Largo cada</label>
+              <input type="number" id="setting-long-every" min="2" max="12" value="4" class="input font-mono" />
             </div>
           </div>
-
-          <!-- 2. Dona de distribución + Análisis de Tiempo Muerto -->
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <!-- Dona SVG y leyenda -->
-            <div class="lg:col-span-5 bg-zinc-900/85 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between">
-              <div class="mb-3">
-                <h3 class="text-sm font-bold text-zinc-100">Distribución porcentual del tiempo</h3>
-                <p class="text-xs text-zinc-400 mt-0.5">Pasa el cursor sobre cada tramo para inspeccionarlo.</p>
-              </div>
-              <div id="report-donut-svg-wrap" class="my-2"></div>
-              <div id="report-donut-legend" class="mt-3"></div>
+          <div class="row-between" style="margin-top:6px;">
+            <div style="max-width:140px;">
+              <label for="setting-batch-count" class="field-label">Bloques por carga</label>
+              <input type="number" id="setting-batch-count" min="1" max="12" value="4" class="input font-mono" />
             </div>
+            <button type="button" onclick="savePomodoroDefaultSettings()" class="btn btn-secondary" style="align-self:flex-end;">Guardar tiempos</button>
+          </div>
+        </div>
 
-            <!-- Comparativa Flujo vs Tiempo Muerto y desglose -->
-            <div class="lg:col-span-7 bg-zinc-900/85 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between gap-5">
-              <div>
-                <h3 class="text-sm font-bold text-zinc-100">Flujo Pomodoro vs. Tiempo muerto</h3>
-                <p class="text-xs text-zinc-400 mt-0.5">Compara el tiempo invertido dentro del método (enfoque + descansos) frente a pausas y esperas sin avanzar.</p>
-
-                <!-- Barra apilada 100% -->
-                <div id="report-stacked-bar" class="mt-4 w-full h-4 rounded-full bg-zinc-800 overflow-hidden flex"></div>
-
-                <!-- Tarjetas comparativas -->
-                <div class="grid grid-cols-2 gap-3 mt-4">
-                  <div class="bg-zinc-950/70 border border-zinc-800/90 rounded-xl p-3.5">
-                    <p class="text-[11px] font-medium text-zinc-400">Dentro del flujo (Trabajo + Descansos)</p>
-                    <div class="flex items-baseline gap-2 mt-1">
-                      <span id="compare-flow-pct" class="text-xl font-mono font-bold text-zinc-100">0%</span>
-                      <span id="compare-flow-dur" class="text-xs font-mono text-zinc-400">0m</span>
-                    </div>
-                  </div>
-                  <div class="bg-zinc-950/70 border border-amber-500/20 rounded-xl p-3.5">
-                    <p class="text-[11px] font-medium text-amber-300/90">Tiempo muerto (No se avanzó)</p>
-                    <div class="flex items-baseline gap-2 mt-1">
-                      <span id="compare-dead-pct" class="text-xl font-mono font-bold text-amber-300">0%</span>
-                      <span id="compare-dead-dur" class="text-xs font-mono text-zinc-400">0m</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Desglose específico del tiempo muerto -->
-              <div class="space-y-3 pt-4 border-t border-zinc-800/80">
-                <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Desglose de tiempos muertos</h4>
-
-                <div class="bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3.5 flex items-start justify-between gap-3">
-                  <div class="flex items-start gap-2.5">
-                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1 shrink-0"></span>
-                    <div>
-                      <p class="text-xs font-semibold text-zinc-200">Pausas dentro de bloques</p>
-                      <p id="dead-pauses-meta" class="text-[11px] text-zinc-400 mt-0.5">Sin pausas registradas</p>
-                    </div>
-                  </div>
-                  <span id="dead-pauses-total" class="text-sm font-mono font-bold text-amber-300 shrink-0">0s</span>
-                </div>
-
-                <div class="bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3.5 flex items-start justify-between gap-3">
-                  <div class="flex items-start gap-2.5">
-                    <span class="w-2.5 h-2.5 rounded-full bg-slate-500 mt-1 shrink-0"></span>
-                    <div>
-                      <p class="text-xs font-semibold text-zinc-200">Sin avanzar entre bloques</p>
-                      <p id="dead-idle-meta" class="text-[11px] text-zinc-400 mt-0.5">Sin esperas registradas</p>
-                    </div>
-                  </div>
-                  <span id="dead-idle-total" class="text-sm font-mono font-bold text-slate-300 shrink-0">0s</span>
-                </div>
-
-                <!-- Tasa de finalización de Pomodoros -->
-                <div class="pt-1">
-                  <div class="flex items-center justify-between text-xs mb-1.5">
-                    <span class="text-zinc-400">Tasa de finalización de Pomodoros</span>
-                    <span id="completion-rate-text" class="font-mono font-semibold text-zinc-200">0%</span>
-                  </div>
-                  <div class="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
-                    <div id="completion-rate-bar" class="h-full rounded-full bg-emerald-500 transition-all" style="width:0%"></div>
-                  </div>
-                </div>
-              </div>
+        <!-- Gestión de hábitos diarios -->
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div>
+              <h3 class="section-title">Gestión de hábitos diarios</h3>
+              <p class="section-subtitle">Configura de 3 a 6 hábitos clave para tu seguimiento diario.</p>
             </div>
+            <span id="settings-habits-count" class="badge font-mono">4/6</span>
           </div>
 
-          <!-- 3. Evolución diaria (Gráfico de barras apiladas) -->
-          <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-5">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-              <div>
-                <h3 class="text-sm font-bold text-zinc-100">Evolución por día</h3>
-                <p class="text-xs text-zinc-400 mt-0.5">Haz clic en cualquier día para inspeccionar su línea de tiempo detallada.</p>
-              </div>
-              <div class="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
-                <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span>Trabajo</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Descanso</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Pausas</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-slate-500"></span>Sin avanzar</span>
-              </div>
-            </div>
-            <div id="report-daily-chart" class="w-full"></div>
-          </div>
+          <form onsubmit="addNewHabit(event)" class="row-wrap" style="gap:8px;">
+            <input type="text" id="new-habit-icon" value="✨" maxlength="4" class="input" style="width:54px;text-align:center;" aria-label="Ícono del hábito" />
+            <input type="text" id="new-habit-name" maxlength="50" placeholder="Ej. Meditar 10 minutos..." class="input" style="flex:1;min-width:160px;" />
+            <button id="btn-add-habit" type="submit" class="btn btn-primary">Agregar</button>
+          </form>
 
-          <!-- 4. Línea de tiempo visual exacta de la jornada -->
-          <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-5 space-y-4">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 class="text-sm font-bold text-zinc-100">Línea de tiempo de la jornada</h3>
-                <p class="text-xs text-zinc-400 mt-0.5">Secuencia exacta de trabajo, descansos, pausas y huecos sin iniciar bloques.</p>
-              </div>
-              <div class="w-full sm:w-52">
-                <label for="report-timeline-day" class="sr-only">Seleccionar día para línea de tiempo</label>
-                <select id="report-timeline-day" onchange="onTimelineDayChange(this.value)" class="w-full bg-zinc-950 border border-zinc-800 focus:border-rose-500 focus:outline-none rounded-xl px-3 py-2 text-xs text-zinc-200 font-mono"></select>
-              </div>
-            </div>
+          <div id="settings-habits-list" style="margin-top:4px;"></div>
+        </div>
 
-            <div id="report-timeline-meta" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400"></div>
-            <div id="report-timeline-strip"></div>
-            <div id="report-timeline-dead-list"></div>
+        <!-- Zona peligrosa -->
+        <div class="card row-between" style="border-color:var(--danger-border);">
+          <div>
+            <h3 class="sub-heading" style="color:var(--danger-text);">Restablecer aplicación</h3>
+            <p class="tiny-text" style="margin:2px 0 0;">Borra tareas, hábitos, cierres e historial de este dispositivo.</p>
           </div>
-
-          <!-- 5. Enfoque por etiqueta / categoría -->
-          <div class="bg-zinc-900/85 border border-zinc-800 rounded-2xl p-5">
-            <div class="mb-4">
-              <h3 class="text-sm font-bold text-zinc-100">Enfoque efectivo por etiqueta</h3>
-              <p class="text-xs text-zinc-400 mt-0.5">Distribución de tu tiempo real trabajado según categoría.</p>
-            </div>
-            <div id="report-tags-list" class="space-y-3.5"></div>
-          </div>
+          <button type="button" onclick="openResetAllModal()" class="btn btn-sm btn-danger-soft">Borrar todo</button>
         </div>
       </div>
     </section>
   </main>
 
-  <!-- ==================== MODALES PERSONALIZADOS ==================== -->
+  <!-- ==================== BOTÓN FLOTANTE DE CAPTURA RÁPIDA (FAB) ==================== -->
+  <button id="fab-quick-add" type="button" onclick="openTaskModal('general')" class="fab-btn" title="Captura rápida de tarea" aria-label="Agregar tarea rápida">
+    <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.6">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+    </svg>
+  </button>
+
+  <!-- ==================== NAVEGACIÓN INFERIOR FIJA (4 PESTAÑAS) ==================== -->
+  <nav class="bottom-nav" aria-label="Navegación principal">
+    <div class="bottom-nav-inner">
+      <button id="nav-today" type="button" onclick="switchTab('today')" class="nav-item is-active" aria-current="page">
+        <span id="nav-today-badge" class="nav-badge hidden">0</span>
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Hoy</span>
+      </button>
+
+      <button id="nav-focus" type="button" onclick="switchTab('focus')" class="nav-item">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="13" r="8" />
+          <path stroke-linecap="round" d="M12 9v4l2.5 1.5M9.5 3h5M12 3v2" />
+        </svg>
+        <span>Enfoque</span>
+      </button>
+
+      <button id="nav-habits" type="button" onclick="switchTab('habits')" class="nav-item">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        <span>Hábitos</span>
+      </button>
+
+      <button id="nav-progress" type="button" onclick="switchTab('progress')" class="nav-item">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <span>Progreso</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ==================== MODALES Y BOTTOM SHEETS ==================== -->
+
+  <!-- Modal: Captura Rápida / Editar Tarea -->
+  <div id="modal-task" class="modal-backdrop hidden">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <h3 id="modal-task-heading" class="section-title" style="margin-bottom:14px;">Nueva tarea para hoy</h3>
+      <form onsubmit="submitTaskForm(event)" class="stack-md">
+        <div>
+          <label for="task-input-title" class="field-label">¿Qué necesitas lograr?</label>
+          <input type="text" id="task-input-title" maxlength="100" placeholder="Ej. Cerrar entrega del módulo API..." class="input" required />
+        </div>
+
+        <div>
+          <label for="task-input-tag" class="field-label">Etiqueta</label>
+          <input type="text" id="task-input-tag" maxlength="32" value="Trabajo" placeholder="Trabajo, Estudio, Personal..." class="input" />
+        </div>
+
+        <div class="card-inset row-between">
+          <div>
+            <div style="font-size:13px;font-weight:600;">Incluir en Top 3 Diario</div>
+            <div id="task-top3-limit-hint" class="tiny-text">Prioridad crítica del día (máx. 3).</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="task-input-top3" />
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <div class="row-wrap" style="justify-content:flex-end;">
+          <button type="button" onclick="closeModal('modal-task')" class="btn btn-secondary">Cancelar</button>
+          <button id="task-submit-btn" type="submit" class="btn btn-primary">Agregar tarea</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Revisión individual de pendientes de días anteriores -->
+  <div id="modal-rollover" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md">
+      <div class="sheet-handle"></div>
+      <div>
+        <h3 class="section-title">Pendientes anteriores</h3>
+        <p class="section-subtitle">Decide cuáles mover a Hoy y cuáles descartar.</p>
+      </div>
+      <div id="rollover-modal-list" class="stack-sm"></div>
+      <div class="row-between">
+        <button type="button" onclick="discardAllCarryover()" class="btn btn-sm btn-danger-soft">Descartar todo</button>
+        <div class="row-wrap">
+          <button type="button" onclick="closeModal('modal-rollover')" class="btn btn-sm btn-secondary">Cerrar</button>
+          <button type="button" onclick="moveAllCarryoverToToday()" class="btn btn-sm btn-amber">Mover todo a Hoy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Ritual de Cierre del Día (Shutdown) -->
+  <div id="modal-shutdown" class="modal-backdrop hidden">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <h3 class="section-title">Ritual de Cierre del Día</h3>
+      <p class="section-subtitle" style="margin-bottom:14px;">Resumen automático de tu jornada.</p>
+
+      <form onsubmit="saveDailyShutdown(event)" class="stack-md">
+        <div id="shutdown-summary-grid" class="grid-2"></div>
+
+        <div>
+          <span class="field-label">¿Cómo estuvo tu energía / ánimo hoy? (1 al 5)</span>
+          <div id="shutdown-mood-picker" class="mood-grid"></div>
+        </div>
+
+        <div>
+          <label for="shutdown-note-input" class="field-label">Reflexión breve (1–2 líneas)</label>
+          <textarea id="shutdown-note-input" maxlength="240" placeholder="¿Qué salió bien hoy o qué priorizarás mañana?" class="textarea"></textarea>
+        </div>
+
+        <div class="row-wrap" style="justify-content:flex-end;">
+          <button type="button" onclick="closeModal('modal-shutdown')" class="btn btn-secondary">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar cierre</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Modal: Detener bloque en curso -->
-  <div id="modal-stop" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl">
-      <h3 class="text-lg font-bold text-zinc-100">¿Detener este bloque?</h3>
-      <p id="modal-stop-desc" class="text-sm text-zinc-400 mt-2">
-        Puedes guardar el tiempo transcurrido hasta ahora como un bloque incompleto en tu histórico, o descartarlo por completo.
-      </p>
-      <div class="mt-6 flex flex-col gap-2.5">
-        <button type="button" onclick="confirmStopBlock('incomplete')" class="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors">
-          Guardar como incompleto
-        </button>
-        <button type="button" onclick="confirmStopBlock('discard')" class="w-full py-2.5 px-4 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 font-semibold text-sm transition-colors">
-          Descartar bloque (no guardar)
-        </button>
-        <button type="button" onclick="closeStopModal()" class="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium text-sm transition-colors">
-          Continuar bloque
-        </button>
+  <div id="modal-stop" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md">
+      <div class="sheet-handle"></div>
+      <div>
+        <h3 class="section-title">¿Detener este bloque?</h3>
+        <p class="section-subtitle">Puedes guardar el tiempo transcurrido como incompleto en el histórico o descartarlo.</p>
+      </div>
+      <div class="stack-sm">
+        <button type="button" onclick="confirmStopBlock('incomplete')" class="btn btn-amber btn-block">Guardar como incompleto</button>
+        <button type="button" onclick="confirmStopBlock('discard')" class="btn btn-danger-soft btn-block">Descartar bloque (no guardar)</button>
+        <button type="button" onclick="closeStopModal()" class="btn btn-secondary btn-block">Continuar bloque</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Confirmar cambio de carga -->
-  <div id="modal-cancel-batch" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl">
-      <h3 class="text-lg font-bold text-zinc-100">¿Cambiar configuración de carga?</h3>
-      <p class="text-sm text-zinc-400 mt-2">
-        Volverás a la pantalla de configuración. Los bloques que ya hayas completado permanecerán guardados en tu histórico.
-      </p>
-      <div class="mt-6 flex items-center justify-end gap-2.5">
-        <button type="button" onclick="closeModal('modal-cancel-batch')" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors">
-          Cancelar
-        </button>
-        <button type="button" onclick="confirmCancelBatch()" class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-sm font-semibold transition-colors">
-          Sí, cambiar
-        </button>
+  <!-- Modal: Cambiar configuración de carga -->
+  <div id="modal-cancel-batch" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md">
+      <div class="sheet-handle"></div>
+      <div>
+        <h3 class="section-title">¿Cambiar configuración de carga?</h3>
+        <p class="section-subtitle">Los bloques completados permanecerán guardados en tu histórico.</p>
+      </div>
+      <div class="row-wrap" style="justify-content:flex-end;">
+        <button type="button" onclick="closeModal('modal-cancel-batch')" class="btn btn-secondary">Cancelar</button>
+        <button type="button" onclick="confirmCancelBatch()" class="btn btn-primary">Sí, cambiar</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Confirmar limpiar histórico -->
-  <div id="modal-clear-history" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl">
-      <h3 class="text-lg font-bold text-zinc-100">¿Limpiar todo el histórico?</h3>
-      <p class="text-sm text-zinc-400 mt-2">
-        Esta acción eliminará permanentemente todos los registros guardados en este navegador. Considera exportar en JSON o CSV antes.
-      </p>
-      <div class="mt-6 flex items-center justify-end gap-2.5">
-        <button type="button" onclick="closeModal('modal-clear-history')" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors">
-          Cancelar
-        </button>
-        <button type="button" onclick="confirmClearHistory()" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors">
-          Eliminar todo
-        </button>
+  <!-- Modal: Confirmar limpiar histórico de Pomodoro -->
+  <div id="modal-clear-history" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md">
+      <div class="sheet-handle"></div>
+      <div>
+        <h3 class="section-title">¿Limpiar histórico de Pomodoro?</h3>
+        <p class="section-subtitle">Elimina los registros de enfoque de este dispositivo. Tus tareas y hábitos se conservan.</p>
+      </div>
+      <div class="row-wrap" style="justify-content:flex-end;">
+        <button type="button" onclick="closeModal('modal-clear-history')" class="btn btn-secondary">Cancelar</button>
+        <button type="button" onclick="confirmClearHistory()" class="btn btn-danger">Eliminar historial</button>
       </div>
     </div>
   </div>
 
-  <!-- Módulos JavaScript en orden de dependencias -->
+  <!-- Modal: Confirmar importación de respaldo JSON -->
+  <div id="modal-import-backup" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md">
+      <div class="sheet-handle"></div>
+      <div>
+        <h3 class="section-title">Confirmar restauración de respaldo</h3>
+        <div id="import-preview-text" class="muted-text" style="margin-top:8px;"></div>
+      </div>
+      <div class="row-wrap" style="justify-content:flex-end;">
+        <button type="button" onclick="closeModal('modal-import-backup')" class="btn btn-secondary">Cancelar</button>
+        <button type="button" onclick="confirmImportBackup()" class="btn btn-emerald">Restaurar datos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar borrado total -->
+  <div id="modal-reset-all" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md">
+      <div class="sheet-handle"></div>
+      <div>
+        <h3 class="section-title" style="color:var(--danger-text);">¿Borrar todos los datos locales?</h3>
+        <p class="section-subtitle">Se eliminarán tareas, hábitos, cierres e historial. Exporta un respaldo (.json) antes si deseas conservarlos.</p>
+      </div>
+      <div class="row-wrap" style="justify-content:flex-end;">
+        <button type="button" onclick="closeModal('modal-reset-all')" class="btn btn-secondary">Cancelar</button>
+        <button type="button" onclick="confirmResetAllData()" class="btn btn-danger">Sí, borrar todo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Módulos JavaScript en orden de dependencias (100% locales) -->
   <script src="js/constants.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/ui-helpers.js"></script>
+  <script src="js/tasks.js"></script>
   <script src="js/timer.js"></script>
+  <script src="js/habits.js"></script>
+  <script src="js/progress.js"></script>
   <script src="js/history.js"></script>
   <script src="js/reports.js"></script>
   <script src="js/app.js"></script>

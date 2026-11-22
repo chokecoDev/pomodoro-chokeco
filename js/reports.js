@@ -1,27 +1,17 @@
 /**
  * =========================================================================
- * REPORTES GRÁFICOS Y ANÁLISIS DE TIEMPO EFECTIVO VS. TIEMPOS MUERTOS
+ * REPORTES GRÁFICOS DE ENFOQUE: TRABAJO EFECTIVO VS. DESCANSOS VS. TIEMPO MUERTO
  * =========================================================================
- * Diferencia claramente:
- *  1. Trabajo efectivo (Enfoque real dentro de bloques Pomodoro)
- *  2. Descansos planificados (Descansos cortos y largos del flujo Pomodoro)
- *  3. Tiempo muerto (No se avanzó con el flujo de Pomodoro):
- *     - Pausas registradas dentro de bloques (pauses[])
- *     - Tiempos inactivos sin iniciar entre bloques (espera en READY_*)
  */
 
 const reportFilters = {
   period: 'all',     // 'today' | '7d' | '30d' | 'all'
   tag: 'all',        // 'all' | string
   idleScope: 'day',  // 'day' (jornada completa) | 'batch' (solo dentro de cada carga)
-  selectedDay: null, // 'YYYY-MM-DD' para la línea de tiempo visual
+  selectedDay: null, // 'YYYY-MM-DD'
 };
 
 let lastReportData = null;
-
-// =========================================================================
-// CONTROLES DE FILTROS DEL REPORTE
-// =========================================================================
 
 function setReportPeriod(period) {
   reportFilters.period = period;
@@ -49,17 +39,14 @@ function onTimelineDayChange(dateKey) {
 }
 
 function updateReportFilterButtons() {
-  const activePill = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 text-zinc-100 shadow-sm transition-all';
-  const idlePill = 'px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-all';
-
   ['today', '7d', '30d', 'all'].forEach((p) => {
     const btn = document.getElementById(`report-period-${p}`);
-    if (btn) btn.className = reportFilters.period === p ? activePill : idlePill;
+    if (btn) btn.classList.toggle('is-active', reportFilters.period === p);
   });
 
   ['day', 'batch'].forEach((s) => {
     const btn = document.getElementById(`report-scope-${s}`);
-    if (btn) btn.className = reportFilters.idleScope === s ? activePill : idlePill;
+    if (btn) btn.classList.toggle('is-active', reportFilters.idleScope === s);
   });
 
   const hint = document.getElementById('report-scope-hint');
@@ -93,16 +80,9 @@ function getLogsInPeriod() {
     const startMs = new Date(log.started_at).getTime();
     const endMs = new Date(log.ended_at).getTime();
     if (Number.isNaN(startMs) || Number.isNaN(endMs)) return false;
-
     if (cutoffMs !== null && startMs < cutoffMs) return false;
     return true;
   });
-}
-
-function getFilteredLogsForReport() {
-  const periodLogs = getLogsInPeriod();
-  if (reportFilters.tag === 'all') return periodLogs;
-  return periodLogs.filter((log) => log.tag === reportFilters.tag);
 }
 
 function extractClampedPauses(log, startMs, endMs) {
@@ -118,7 +98,6 @@ function extractClampedPauses(log, startMs, endMs) {
     .filter((p) => !Number.isNaN(p.startMs) && !Number.isNaN(p.endMs) && p.endMs > p.startMs)
     .sort((a, b) => a.startMs - b.startMs);
 
-  // Fusionar pausas solapadas si las hubiera
   const merged = [];
   for (const item of intervals) {
     if (merged.length === 0 || item.startMs >= merged[merged.length - 1].endMs) {
@@ -128,7 +107,6 @@ function extractClampedPauses(log, startMs, endMs) {
     }
   }
 
-  // Fallback si el log registra total_paused_sec pero sin detalle en pauses[]
   if (merged.length === 0 && (log.total_paused_sec || 0) > 0 && wallSec > 0) {
     const fallbackPauseMs = Math.min(endMs - startMs, (log.total_paused_sec || 0) * 1000);
     if (fallbackPauseMs > 0) {
@@ -144,13 +122,10 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
 
   for (const log of logs) {
     const dateKey = formatDateKeyLocal(log.started_at);
-    if (!byDayMap.has(dateKey)) {
-      byDayMap.set(dateKey, []);
-    }
+    if (!byDayMap.has(dateKey)) byDayMap.set(dateKey, []);
     byDayMap.get(dateKey).push(log);
   }
 
-  // Referencia de todos los bloques del periodo (para no marcar actividad de otra etiqueta como tiempo muerto)
   const refByDayMap = new Map();
   if (Array.isArray(allReferenceLogs) && allReferenceLogs.length > logs.length) {
     for (const ref of allReferenceLogs) {
@@ -247,14 +222,9 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
       const isLongBreak = log.type === 'long_break';
       const isBreak = log.type === 'short_break' || isLongBreak;
 
-      if (dayStats.spanStartMs === null || startMs < dayStats.spanStartMs) {
-        dayStats.spanStartMs = startMs;
-      }
-      if (dayStats.spanEndMs === null || endMs > dayStats.spanEndMs) {
-        dayStats.spanEndMs = endMs;
-      }
+      if (dayStats.spanStartMs === null || startMs < dayStats.spanStartMs) dayStats.spanStartMs = startMs;
+      if (dayStats.spanEndMs === null || endMs > dayStats.spanEndMs) dayStats.spanEndMs = endMs;
 
-      // 1. Hueco de inactividad entre el bloque anterior y el actual
       if (maxEndMs !== null && startMs > maxEndMs) {
         const gapSec = (startMs - maxEndMs) / 1000;
         const sameBatch = Boolean(prevBatchId && log.batch_id && prevBatchId === log.batch_id);
@@ -279,7 +249,6 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
             durationSec: gapSec,
             label: gapLabel,
             sublabel: `Después de ${formatBlockTypeShort(prevType)} · antes de ${formatBlockTypeShort(log.type)}`,
-            sameBatch,
           });
 
           dayStats.deadEvents.push({
@@ -304,7 +273,6 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
         }
       }
 
-      // 2. Descomposición del bloque actual en tramos activos y pausas exactas
       const pauses = extractClampedPauses(log, startMs, endMs);
       const tagStats = getTagStats(log.tag);
       tagStats.blocksCount += 1;
@@ -334,6 +302,7 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
         : isLongBreak
           ? 'Descanso largo'
           : 'Descanso corto';
+      const subLbl = log.task_title ? `${log.tag || 'Trabajo'} · ${log.task_title}` : (log.tag || 'Sin etiqueta');
 
       for (const p of pauses) {
         if (p.startMs > cursor) {
@@ -345,7 +314,7 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
             endMs: p.startMs,
             durationSec: segSec,
             label: blockLabel,
-            sublabel: log.tag || 'Sin etiqueta',
+            sublabel: subLbl,
           });
         }
 
@@ -363,7 +332,7 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
             endMs: p.endMs,
             durationSec: pauseSegSec,
             label: pauseLabel,
-            sublabel: log.tag || 'Sin etiqueta',
+            sublabel: subLbl,
           });
 
           dayStats.deadEvents.push({
@@ -388,7 +357,7 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
           endMs: endMs,
           durationSec: tailSec,
           label: blockLabel,
-          sublabel: log.tag || 'Sin etiqueta',
+          sublabel: subLbl,
         });
       }
 
@@ -429,7 +398,6 @@ function analyzeLogsForReport(logs, idleScope, allReferenceLogs = null) {
 
   const flowDenom = summary.focusSec + summary.deadTimeSec;
   summary.flowEfficiencyPct = flowDenom > 0 ? (summary.focusSec / flowDenom) * 100 : 0;
-
   summary.tagBreakdown = [...tagMap.values()].sort((a, b) => b.focusSec - a.focusSec);
 
   return summary;
@@ -451,8 +419,8 @@ function showReportTooltip(event, title, linesHtml) {
   if (!el) return;
 
   el.innerHTML = `
-    <div class="font-semibold text-zinc-100 text-xs mb-1">${title}</div>
-    <div class="text-[11px] text-zinc-300 space-y-0.5">${linesHtml}</div>
+    <div style="font-weight:700;margin-bottom:4px;color:var(--text-primary);">${title}</div>
+    <div style="font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">${linesHtml}</div>
   `;
   el.classList.remove('hidden');
   moveReportTooltip(event);
@@ -517,7 +485,6 @@ function renderReports() {
   const data = analyzeLogsForReport(filteredLogs, reportFilters.idleScope, periodLogs);
   lastReportData = data;
 
-  // Asegurar que el día seleccionado en la línea de tiempo exista en el rango actual
   const availableDays = data.dailySeries.map((d) => d.dateKey);
   if (!reportFilters.selectedDay || !availableDays.includes(reportFilters.selectedDay)) {
     reportFilters.selectedDay = availableDays[availableDays.length - 1] || null;
@@ -529,10 +496,6 @@ function renderReports() {
   renderTimelineSection(data);
   renderTagBreakdown(data);
 }
-
-// -------------------------------------------------------------------------
-// 1. TARJETAS KPI PRINCIPALES
-// -------------------------------------------------------------------------
 
 function renderReportKpis(data) {
   const total = data.totalTrackedSec;
@@ -556,13 +519,8 @@ function renderReportKpis(data) {
     ? `${data.flowEfficiencyPct.toFixed(1).replace(/\.0$/, '')}%`
     : '0%';
   document.getElementById('kpi-efficiency-pct').textContent = effStr;
-  document.getElementById('kpi-efficiency-sub').textContent =
-    `Enfoque vs. tiempo muerto (sin descansos)`;
+  document.getElementById('kpi-efficiency-sub').textContent = 'Enfoque vs. tiempo muerto (sin descansos)';
 }
-
-// -------------------------------------------------------------------------
-// 2. GRÁFICO DE DONA SVG + BARRA PROPORCIONAL + DESGLOSE DE TIEMPO MUERTO
-// -------------------------------------------------------------------------
 
 function renderDonutAndBreakdown(data) {
   const total = data.totalTrackedSec;
@@ -576,8 +534,8 @@ function renderDonutAndBreakdown(data) {
       desc: 'Enfoque real en Pomodoros',
       sec: data.focusSec,
       color: REPORT_COLORS.focus,
-      badgeCls: 'text-rose-400',
-      dotCls: 'bg-rose-500',
+      textColor: 'var(--rose-text)',
+      dotCls: 'dot-rose',
     },
     {
       key: 'break',
@@ -585,8 +543,8 @@ function renderDonutAndBreakdown(data) {
       desc: 'Descansos cortos y largos del método',
       sec: data.breakSec,
       color: REPORT_COLORS.break,
-      badgeCls: 'text-emerald-400',
-      dotCls: 'bg-emerald-500',
+      textColor: 'var(--emerald-text)',
+      dotCls: 'dot-emerald',
     },
     {
       key: 'pause',
@@ -594,21 +552,20 @@ function renderDonutAndBreakdown(data) {
       desc: 'Tiempo muerto · interrupciones registradas',
       sec: data.pauseSec,
       color: REPORT_COLORS.pause,
-      badgeCls: 'text-amber-400',
-      dotCls: 'bg-amber-500',
+      textColor: 'var(--amber-text)',
+      dotCls: 'dot-amber',
     },
     {
       key: 'idle',
       label: 'Sin avanzar',
-      desc: 'Tiempo muerto · espera sin iniciar siguiente bloque',
+      desc: 'Tiempo muerto · espera sin iniciar bloque',
       sec: data.idleGapSec,
       color: REPORT_COLORS.idle,
-      badgeCls: 'text-slate-300',
-      dotCls: 'bg-slate-500',
+      textColor: 'var(--slate-text)',
+      dotCls: 'dot-slate',
     },
   ];
 
-  // Construcción de la dona SVG (radio = 78, circunferencia = 2 * PI * 78)
   const r = 78;
   const c = 2 * Math.PI * r;
   let offsetAccum = 0;
@@ -624,16 +581,10 @@ function renderDonutAndBreakdown(data) {
 
       return `
         <circle
-          cx="100"
-          cy="100"
-          r="${r}"
-          fill="none"
-          stroke="${seg.color}"
-          stroke-width="20"
-          stroke-dasharray="${dashArray}"
-          stroke-dashoffset="${dashOffset}"
+          cx="100" cy="100" r="${r}" fill="none"
+          stroke="${seg.color}" stroke-width="20"
+          stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}"
           class="report-donut-segment"
-          data-seg-key="${seg.key}"
           data-seg-label="${escapeHtml(seg.label)}"
           data-seg-pct="${pct}"
           data-seg-dur="${escapeHtml(formatDurationHuman(seg.sec))}"
@@ -648,20 +599,19 @@ function renderDonutAndBreakdown(data) {
   const defaultCenterDur = formatDurationHuman(data.focusSec);
 
   donutContainer.innerHTML = `
-    <div class="relative w-52 h-52 mx-auto flex items-center justify-center">
-      <svg viewBox="0 0 200 200" class="w-full h-full -rotate-90">
-        <circle cx="100" cy="100" r="${r}" fill="none" stroke="#27272a" stroke-width="20" />
+    <div style="position:relative;width:196px;height:196px;margin:6px auto;display:flex;align-items:center;justify-content:center;">
+      <svg viewBox="0 0 200 200" style="width:100%;height:100%;transform:rotate(-90deg);">
+        <circle cx="100" cy="100" r="${r}" fill="none" stroke="var(--ring-track)" stroke-width="20" />
         ${circlesHtml}
       </svg>
-      <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-5">
-        <span id="donut-center-label" class="text-[11px] font-medium text-zinc-400 leading-tight">${defaultCenterSub}</span>
-        <span id="donut-center-pct" class="text-3xl font-mono font-bold text-zinc-100 mt-0.5">${defaultCenterPct}</span>
-        <span id="donut-center-dur" class="text-xs font-mono text-zinc-400 mt-0.5">${defaultCenterDur}</span>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;padding:0 18px;">
+        <span id="donut-center-label" class="tiny-text">${defaultCenterSub}</span>
+        <span id="donut-center-pct" class="font-mono" style="font-size:28px;font-weight:700;line-height:1.15;margin-top:2px;">${defaultCenterPct}</span>
+        <span id="donut-center-dur" class="font-mono tiny-text" style="margin-top:2px;">${defaultCenterDur}</span>
       </div>
     </div>
   `;
 
-  // Interactividad hover en la dona
   const centerLabel = document.getElementById('donut-center-label');
   const centerPct = document.getElementById('donut-center-pct');
   const centerDur = document.getElementById('donut-center-dur');
@@ -674,8 +624,8 @@ function renderDonutAndBreakdown(data) {
       showReportTooltip(
         e,
         circle.dataset.segLabel,
-        `<div>Tiempo: <strong class="font-mono text-zinc-100">${circle.dataset.segDur}</strong> (${circle.dataset.segPct})</div>
-         <div class="text-zinc-400">${circle.dataset.segDesc}</div>`
+        `<div>Tiempo: <strong class="font-mono">${circle.dataset.segDur}</strong> (${circle.dataset.segPct})</div>
+         <div>${circle.dataset.segDesc}</div>`
       );
     });
     circle.addEventListener('mousemove', moveReportTooltip);
@@ -687,29 +637,24 @@ function renderDonutAndBreakdown(data) {
     });
   });
 
-  // Leyenda detallada
   legendContainer.innerHTML = segments
-    .map((seg) => {
-      const pct = formatPercent(seg.sec, total);
-      return `
-        <div class="flex items-center justify-between gap-3 py-2 border-b border-zinc-800/70 last:border-b-0">
-          <div class="flex items-center gap-2.5 min-w-0">
-            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${seg.dotCls}"></span>
-            <div class="min-w-0">
-              <p class="text-xs font-semibold text-zinc-200 truncate">${seg.label}</p>
-              <p class="text-[11px] text-zinc-500 truncate">${seg.desc}</p>
-            </div>
-          </div>
-          <div class="text-right shrink-0 font-mono">
-            <span class="text-xs font-bold ${seg.badgeCls}">${pct}</span>
-            <p class="text-[11px] text-zinc-400">${formatDurationHuman(seg.sec)}</p>
+    .map((seg) => `
+      <div class="list-row" style="padding:8px 0;">
+        <div class="row-wrap" style="gap:9px;min-width:0;flex:1;flex-wrap:nowrap;">
+          <span class="dot ${seg.dotCls}"></span>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:600;">${seg.label}</div>
+            <div class="tiny-text">${seg.desc}</div>
           </div>
         </div>
-      `;
-    })
+        <div class="font-mono" style="text-align:right;flex-shrink:0;">
+          <div style="font-size:12px;font-weight:700;color:${seg.textColor};">${formatPercent(seg.sec, total)}</div>
+          <div class="tiny-text">${formatDurationHuman(seg.sec)}</div>
+        </div>
+      </div>
+    `)
     .join('');
 
-  // Barra 100% apilada: Flujo Pomodoro (Trabajo + Descansos) vs Tiempo Muerto (Pausas + Sin avanzar)
   const stackedBar = document.getElementById('report-stacked-bar');
   const pctFocus = total > 0 ? (data.focusSec / total) * 100 : 0;
   const pctBreak = total > 0 ? (data.breakSec / total) * 100 : 0;
@@ -717,19 +662,17 @@ function renderDonutAndBreakdown(data) {
   const pctIdle = total > 0 ? (data.idleGapSec / total) * 100 : 0;
 
   stackedBar.innerHTML = `
-    <div style="width:${pctFocus.toFixed(2)}%" class="h-full bg-rose-500 transition-all" title="Trabajo efectivo: ${formatPercent(data.focusSec, total)}"></div>
-    <div style="width:${pctBreak.toFixed(2)}%" class="h-full bg-emerald-500 transition-all" title="Descansos: ${formatPercent(data.breakSec, total)}"></div>
-    <div style="width:${pctPause.toFixed(2)}%" class="h-full bg-amber-500 transition-all" title="Pausas en bloque: ${formatPercent(data.pauseSec, total)}"></div>
-    <div style="width:${pctIdle.toFixed(2)}%" class="h-full bg-slate-500 transition-all" title="Sin avanzar entre bloques: ${formatPercent(data.idleGapSec, total)}"></div>
+    <div style="width:${pctFocus.toFixed(2)}%;background:${REPORT_COLORS.focus};" title="Trabajo efectivo: ${formatPercent(data.focusSec, total)}"></div>
+    <div style="width:${pctBreak.toFixed(2)}%;background:${REPORT_COLORS.break};" title="Descansos: ${formatPercent(data.breakSec, total)}"></div>
+    <div style="width:${pctPause.toFixed(2)}%;background:${REPORT_COLORS.pause};" title="Pausas: ${formatPercent(data.pauseSec, total)}"></div>
+    <div style="width:${pctIdle.toFixed(2)}%;background:${REPORT_COLORS.idle};" title="Sin avanzar: ${formatPercent(data.idleGapSec, total)}"></div>
   `;
 
-  // Resumen comparativo Flujo activo vs Tiempo muerto
   document.getElementById('compare-flow-pct').textContent = formatPercent(data.productiveFlowSec, total);
   document.getElementById('compare-flow-dur').textContent = formatDurationHuman(data.productiveFlowSec);
   document.getElementById('compare-dead-pct').textContent = formatPercent(data.deadTimeSec, total);
   document.getElementById('compare-dead-dur').textContent = formatDurationHuman(data.deadTimeSec);
 
-  // Desglose de Tiempo Muerto y Tasa de finalización
   document.getElementById('dead-pauses-total').textContent = formatDurationHuman(data.pauseSec);
   document.getElementById('dead-pauses-meta').textContent = data.pauseCount > 0
     ? `${data.pauseCount} ${data.pauseCount === 1 ? 'pausa' : 'pausas'} · prom. ${formatDurationHuman(data.avgPauseSec)} · máx. ${formatDurationHuman(data.longestPauseSec)}`
@@ -748,39 +691,32 @@ function renderDonutAndBreakdown(data) {
   document.getElementById('completion-rate-bar').style.width = `${completionPct.toFixed(1)}%`;
 }
 
-// -------------------------------------------------------------------------
-// 3. GRÁFICO DE EVOLUCIÓN POR DÍA (BARRAS APILADAS SVG)
-// -------------------------------------------------------------------------
-
 function renderDailyBarChart(data) {
   const container = document.getElementById('report-daily-chart');
-  const days = data.dailySeries.slice(-14); // Últimos 14 días activos del rango
+  const days = data.dailySeries.slice(-14);
 
   if (days.length === 0) {
-    container.innerHTML = '<p class="text-xs text-zinc-500 text-center py-6">Sin datos diarios para graficar.</p>';
+    container.innerHTML = '<p class="muted-text" style="text-align:center;padding:18px 0;">Sin datos diarios para graficar.</p>';
     return;
   }
 
   const maxTotalSec = Math.max(...days.map((d) => d.totalTrackedSec), 1);
-
   const svgWidth = 640;
-  const svgHeight = 220;
+  const svgHeight = 215;
   const padLeft = 44;
   const padRight = 14;
-  const padTop = 16;
-  const padBottom = 34;
+  const padTop = 14;
+  const padBottom = 32;
   const chartW = svgWidth - padLeft - padRight;
   const chartH = svgHeight - padTop - padBottom;
 
-  // Líneas de referencia horizontales (0%, 25%, 50%, 75%, 100%)
-  const gridSteps = [0, 0.25, 0.5, 0.75, 1];
-  const gridHtml = gridSteps
+  const gridHtml = [0, 0.25, 0.5, 0.75, 1]
     .map((ratio) => {
       const y = padTop + chartH * (1 - ratio);
       const labelSec = maxTotalSec * ratio;
       return `
-        <line x1="${padLeft}" y1="${y.toFixed(1)}" x2="${svgWidth - padRight}" y2="${y.toFixed(1)}" stroke="#27272a" stroke-width="1" stroke-dasharray="${ratio === 0 ? '' : '3 3'}" />
-        <text x="${padLeft - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="#71717a" font-size="10" font-family="JetBrains Mono, monospace">${formatDurationCompact(labelSec)}</text>
+        <line x1="${padLeft}" y1="${y.toFixed(1)}" x2="${svgWidth - padRight}" y2="${y.toFixed(1)}" stroke="var(--chart-grid)" stroke-width="1" stroke-dasharray="${ratio === 0 ? '' : '3 3'}" />
+        <text x="${padLeft - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="var(--text-muted)" font-size="10" font-family="ui-monospace, monospace">${formatDurationCompact(labelSec)}</text>
       `;
     })
     .join('');
@@ -794,49 +730,42 @@ function renderDailyBarChart(data) {
       const x = centerX - barW / 2;
       const isSelected = day.dateKey === reportFilters.selectedDay;
 
-      const hFocus = (day.focusSec / maxTotalSec) * chartH;
-      const hBreak = (day.breakSec / maxTotalSec) * chartH;
-      const hPause = (day.pauseSec / maxTotalSec) * chartH;
-      const hIdle = (day.idleGapSec / maxTotalSec) * chartH;
-
       let yCursor = padTop + chartH;
       const rects = [];
-
-      const pushStack = (h, fill) => {
+      const pushStack = (sec, fill) => {
+        const h = (sec / maxTotalSec) * chartH;
         if (h <= 0.3) return;
         yCursor -= h;
         rects.push(`<rect x="${x.toFixed(1)}" y="${yCursor.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" rx="2" />`);
       };
 
-      pushStack(hFocus, REPORT_COLORS.focus);
-      pushStack(hBreak, REPORT_COLORS.break);
-      pushStack(hPause, REPORT_COLORS.pause);
-      pushStack(hIdle, REPORT_COLORS.idle);
+      pushStack(day.focusSec, REPORT_COLORS.focus);
+      pushStack(day.breakSec, REPORT_COLORS.break);
+      pushStack(day.pauseSec, REPORT_COLORS.pause);
+      pushStack(day.idleGapSec, REPORT_COLORS.idle);
 
-      const labelFill = isSelected ? '#f4f4f5' : '#a1a1aa';
       const highlightBg = isSelected
-        ? `<rect x="${(x - 4).toFixed(1)}" y="${padTop}" width="${(barW + 8).toFixed(1)}" height="${chartH}" fill="rgba(244,63,94,0.08)" stroke="rgba(244,63,94,0.35)" stroke-width="1" rx="6" />`
+        ? `<rect x="${(x - 4).toFixed(1)}" y="${padTop}" width="${(barW + 8).toFixed(1)}" height="${chartH}" fill="rgba(244,63,94,0.1)" stroke="rgba(244,63,94,0.4)" stroke-width="1" rx="6" />`
         : '';
 
       return `
-        <g class="report-bar-col cursor-pointer" data-day-key="${day.dateKey}">
+        <g class="report-bar-col" data-day-key="${day.dateKey}">
           ${highlightBg}
           <rect x="${(centerX - slotW / 2).toFixed(1)}" y="${padTop}" width="${slotW.toFixed(1)}" height="${chartH}" fill="transparent" />
           ${rects.join('')}
-          <text x="${centerX.toFixed(1)}" y="${svgHeight - 12}" text-anchor="middle" fill="${labelFill}" font-size="10" font-weight="${isSelected ? '700' : '500'}" font-family="JetBrains Mono, monospace">${formatDateKeyShort(day.dateKey)}</text>
+          <text x="${centerX.toFixed(1)}" y="${svgHeight - 10}" text-anchor="middle" fill="${isSelected ? 'var(--text-primary)' : 'var(--text-muted)'}" font-size="10" font-weight="${isSelected ? '700' : '500'}" font-family="ui-monospace, monospace">${formatDateKeyShort(day.dateKey)}</text>
         </g>
       `;
     })
     .join('');
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${svgWidth} ${svgHeight}" class="w-full h-auto overflow-visible select-none">
+    <svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width:100%;height:auto;overflow:visible;">
       ${gridHtml}
       ${barsHtml}
     </svg>
   `;
 
-  // Eventos hover y click para seleccionar día en la línea de tiempo
   container.querySelectorAll('.report-bar-col').forEach((col) => {
     const dayKey = col.dataset.dayKey;
     const day = data.dayDetails.get(dayKey);
@@ -848,11 +777,10 @@ function renderDailyBarChart(data) {
         e,
         `${formatDateKeyDisplay(dayKey)} · Total ${formatDurationHuman(t)}`,
         `
-          <div class="flex items-center justify-between gap-4"><span class="text-rose-400">● Trabajo efectivo</span><span class="font-mono">${formatDurationHuman(day.focusSec)} (${formatPercent(day.focusSec, t)})</span></div>
-          <div class="flex items-center justify-between gap-4"><span class="text-emerald-400">● Descansos</span><span class="font-mono">${formatDurationHuman(day.breakSec)} (${formatPercent(day.breakSec, t)})</span></div>
-          <div class="flex items-center justify-between gap-4"><span class="text-amber-400">● Pausas en bloque</span><span class="font-mono">${formatDurationHuman(day.pauseSec)} (${formatPercent(day.pauseSec, t)})</span></div>
-          <div class="flex items-center justify-between gap-4"><span class="text-slate-300">● Sin avanzar</span><span class="font-mono">${formatDurationHuman(day.idleGapSec)} (${formatPercent(day.idleGapSec, t)})</span></div>
-          <div class="pt-1 mt-1 border-t border-zinc-800 text-[10px] text-zinc-400">Clic para inspeccionar línea de tiempo</div>
+          <div class="row-between"><span style="color:var(--rose-text);">● Trabajo</span><span class="font-mono">${formatDurationHuman(day.focusSec)} (${formatPercent(day.focusSec, t)})</span></div>
+          <div class="row-between"><span style="color:var(--emerald-text);">● Descansos</span><span class="font-mono">${formatDurationHuman(day.breakSec)} (${formatPercent(day.breakSec, t)})</span></div>
+          <div class="row-between"><span style="color:var(--amber-text);">● Pausas</span><span class="font-mono">${formatDurationHuman(day.pauseSec)} (${formatPercent(day.pauseSec, t)})</span></div>
+          <div class="row-between"><span style="color:var(--slate-text);">● Sin avanzar</span><span class="font-mono">${formatDurationHuman(day.idleGapSec)} (${formatPercent(day.idleGapSec, t)})</span></div>
         `
       );
     });
@@ -866,17 +794,12 @@ function renderDailyBarChart(data) {
   });
 }
 
-// -------------------------------------------------------------------------
-// 4. LÍNEA DE TIEMPO VISUAL DE LA JORNADA (GANTT PROPORCIONAL)
-// -------------------------------------------------------------------------
-
 function renderTimelineSection(data) {
   const selectEl = document.getElementById('report-timeline-day');
   const stripEl = document.getElementById('report-timeline-strip');
   const metaEl = document.getElementById('report-timeline-meta');
   const deadListEl = document.getElementById('report-timeline-dead-list');
 
-  // Poblar selector de días disponibles (más reciente primero)
   const descDays = [...data.dailySeries].reverse();
   selectEl.innerHTML = descDays
     .map((d) => `<option value="${d.dateKey}">${formatDateKeyDisplay(d.dateKey)} (${d.pomosCompleted} pomos)</option>`)
@@ -891,65 +814,57 @@ function renderTimelineSection(data) {
 
   const day = data.dayDetails.get(reportFilters.selectedDay);
   if (!day || day.segments.length === 0) {
-    stripEl.innerHTML = '<div class="text-xs text-zinc-500 text-center py-4">No hay segmentos para este día.</div>';
+    stripEl.innerHTML = '<div class="muted-text" style="text-align:center;padding:12px 0;">No hay segmentos para este día.</div>';
     metaEl.textContent = '';
     deadListEl.innerHTML = '';
     return;
   }
 
   const totalSpanMs = Math.max(1000, day.spanEndMs - day.spanStartMs);
-  const startLabel = formatTimeShortLocal(day.spanStartMs);
-  const endLabel = formatTimeShortLocal(day.spanEndMs);
-  const spanHuman = formatDurationHuman(totalSpanMs / 1000);
-
   metaEl.innerHTML = `
-    <span>Ventana del día: <strong class="text-zinc-200 font-mono">${startLabel} → ${endLabel}</strong> (${spanHuman})</span>
-    <span class="hidden sm:inline text-zinc-600">•</span>
-    <span>Trabajo: <strong class="text-rose-400 font-mono">${formatPercent(day.focusSec, day.totalTrackedSec)}</strong></span>
-    <span>Descansos: <strong class="text-emerald-400 font-mono">${formatPercent(day.breakSec, day.totalTrackedSec)}</strong></span>
-    <span>Tiempo muerto: <strong class="text-amber-400 font-mono">${formatPercent(day.deadTimeSec, day.totalTrackedSec)}</strong></span>
+    <span>Ventana: <strong class="font-mono" style="color:var(--text-primary);">${formatTimeShortLocal(day.spanStartMs)} → ${formatTimeShortLocal(day.spanEndMs)}</strong> (${formatDurationHuman(totalSpanMs / 1000)})</span>
+    <span>Trabajo: <strong class="font-mono" style="color:var(--rose-text);">${formatPercent(day.focusSec, day.totalTrackedSec)}</strong></span>
+    <span>Descansos: <strong class="font-mono" style="color:var(--emerald-text);">${formatPercent(day.breakSec, day.totalTrackedSec)}</strong></span>
+    <span>Muerto: <strong class="font-mono" style="color:var(--amber-text);">${formatPercent(day.deadTimeSec, day.totalTrackedSec)}</strong></span>
   `;
 
-  // Construir barra proporcional exacta
-  const segStyleMap = {
-    focus: 'bg-rose-500',
-    break: 'bg-emerald-500',
-    pause: 'bg-amber-500',
-    idle: 'timeline-idle-pattern border-x border-slate-500/40',
-    neutral_gap: 'timeline-neutral-gap',
+  const segBg = {
+    focus: `background:${REPORT_COLORS.focus};`,
+    break: `background:${REPORT_COLORS.break};`,
+    pause: `background:${REPORT_COLORS.pause};`,
+    idle: '',
+    neutral_gap: '',
   };
 
   const barsHtml = day.segments
     .map((seg, idx) => {
       const widthPct = ((seg.endMs - seg.startMs) / totalSpanMs) * 100;
-      const cls = segStyleMap[seg.kind] || 'bg-zinc-700';
+      const extraCls = seg.kind === 'idle'
+        ? 'timeline-idle-pattern'
+        : seg.kind === 'neutral_gap'
+          ? 'timeline-neutral-gap'
+          : '';
       return `
         <div
-          class="timeline-segment h-full ${cls} cursor-pointer"
-          style="width: ${Math.max(widthPct, 0.35).toFixed(3)}%;"
+          class="timeline-segment ${extraCls}"
+          style="width:${Math.max(widthPct, 0.35).toFixed(3)}%;${segBg[seg.kind] || ''}"
           data-seg-idx="${idx}"
         ></div>
       `;
     })
     .join('');
 
-  // Marcas horarias (inicio, 25%, 50%, 75%, fin)
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((r) => formatTimeShortLocal(day.spanStartMs + totalSpanMs * r));
 
   stripEl.innerHTML = `
-    <div class="w-full h-11 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-stretch">
-      ${barsHtml}
-    </div>
-    <div class="mt-2 flex items-center justify-between text-[11px] font-mono text-zinc-500">
+    <div class="timeline-strip">${barsHtml}</div>
+    <div class="row-between font-mono tiny-text" style="margin-top:6px;">
       <span>${ticks[0]}</span>
-      <span class="hidden sm:inline">${ticks[1]}</span>
       <span>${ticks[2]}</span>
-      <span class="hidden sm:inline">${ticks[3]}</span>
       <span>${ticks[4]}</span>
     </div>
   `;
 
-  // Tooltips por segmento
   stripEl.querySelectorAll('.timeline-segment').forEach((el) => {
     const seg = day.segments[Number(el.dataset.segIdx)];
     if (!seg) return;
@@ -959,9 +874,9 @@ function renderTimelineSection(data) {
         e,
         escapeHtml(seg.label),
         `
-          <div class="font-mono text-zinc-100">${formatTimeLocal(seg.startMs)} → ${formatTimeLocal(seg.endMs)}</div>
-          <div>Duración: <strong class="font-mono text-zinc-100">${formatDurationHuman(seg.durationSec)}</strong></div>
-          ${seg.sublabel ? `<div class="text-zinc-400">${escapeHtml(seg.sublabel)}</div>` : ''}
+          <div class="font-mono">${formatTimeLocal(seg.startMs)} → ${formatTimeLocal(seg.endMs)}</div>
+          <div>Duración: <strong class="font-mono">${formatDurationHuman(seg.durationSec)}</strong></div>
+          ${seg.sublabel ? `<div>${escapeHtml(seg.sublabel)}</div>` : ''}
         `
       );
     });
@@ -969,10 +884,9 @@ function renderTimelineSection(data) {
     el.addEventListener('mouseleave', hideReportTooltip);
   });
 
-  // Auditoría desplegable de eventos de tiempo muerto del día seleccionado
   if (day.deadEvents.length === 0) {
     deadListEl.innerHTML = `
-      <div class="text-xs text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3.5 py-2.5">
+      <div class="badge badge-emerald" style="display:block;padding:10px 12px;border-radius:12px;">
         Sin tiempos muertos registrados en ${formatDateKeyDisplay(day.dateKey)}. Flujo continuo de Pomodoro.
       </div>
     `;
@@ -980,18 +894,16 @@ function renderTimelineSection(data) {
     const rowsHtml = day.deadEvents
       .map((ev) => {
         const isPause = ev.kind === 'pause';
-        const dotCls = isPause ? 'bg-amber-400' : 'bg-slate-400';
-        const durCls = isPause ? 'text-amber-300' : 'text-slate-300';
         return `
-          <div class="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-zinc-800/70 last:border-b-0 text-xs">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="w-2 h-2 rounded-full shrink-0 ${dotCls}"></span>
-              <span class="text-zinc-200 font-medium">${escapeHtml(ev.label)}</span>
-              <span class="text-zinc-500 hidden sm:inline">· ${escapeHtml(ev.detail)}</span>
+          <div class="list-row" style="padding:8px 0;font-size:12px;">
+            <div class="row-wrap" style="gap:7px;min-width:0;flex:1;">
+              <span class="dot ${isPause ? 'dot-amber' : 'dot-slate'}"></span>
+              <span style="font-weight:600;">${escapeHtml(ev.label)}</span>
+              <span class="tiny-text">· ${escapeHtml(ev.detail)}</span>
             </div>
-            <div class="flex items-center gap-3 font-mono shrink-0">
-              <span class="text-zinc-400">${formatTimeLocal(ev.startMs)} → ${formatTimeLocal(ev.endMs)}</span>
-              <span class="font-semibold ${durCls}">${formatDurationHuman(ev.durationSec)}</span>
+            <div class="font-mono" style="display:flex;gap:10px;flex-shrink:0;font-size:11px;">
+              <span class="muted-text">${formatTimeLocal(ev.startMs)} → ${formatTimeLocal(ev.endMs)}</span>
+              <strong style="color:${isPause ? 'var(--amber-text)' : 'var(--slate-text)'};">${formatDurationHuman(ev.durationSec)}</strong>
             </div>
           </div>
         `;
@@ -999,53 +911,46 @@ function renderTimelineSection(data) {
       .join('');
 
     deadListEl.innerHTML = `
-      <details class="bg-zinc-950/60 border border-zinc-800/90 rounded-xl px-4 py-3 group">
-        <summary class="cursor-pointer text-xs font-medium text-zinc-300 hover:text-zinc-100 flex items-center justify-between select-none">
-          <span>Detalle de tiempos muertos del día (${day.deadEvents.length} ${day.deadEvents.length === 1 ? 'evento' : 'eventos'} · ${formatDurationHuman(day.deadTimeSec)})</span>
-          <span class="text-zinc-500 text-[11px] group-open:hidden">Ver eventos ▾</span>
-          <span class="text-zinc-500 text-[11px] hidden group-open:inline">Ocultar ▴</span>
+      <details class="card-inset">
+        <summary class="row-between" style="font-size:12px;font-weight:600;">
+          <span>Detalle de tiempos muertos (${day.deadEvents.length} ${day.deadEvents.length === 1 ? 'evento' : 'eventos'} · ${formatDurationHuman(day.deadTimeSec)})</span>
+          <span class="tiny-text when-closed">Ver eventos ▾</span>
+          <span class="tiny-text when-open">Ocultar ▴</span>
         </summary>
-        <div class="mt-2.5 pt-1 border-t border-zinc-800/80">
-          ${rowsHtml}
-        </div>
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border-subtle);">${rowsHtml}</div>
       </details>
     `;
   }
 }
-
-// -------------------------------------------------------------------------
-// 5. DISTRIBUCIÓN DE ENFOQUE POR ETIQUETA / CATEGORÍA
-// -------------------------------------------------------------------------
 
 function renderTagBreakdown(data) {
   const container = document.getElementById('report-tags-list');
   const tags = data.tagBreakdown;
 
   if (tags.length === 0) {
-    container.innerHTML = '<p class="text-xs text-zinc-500">Sin etiquetas registradas en este periodo.</p>';
+    container.innerHTML = '<p class="muted-text">Sin etiquetas registradas en este periodo.</p>';
     return;
   }
 
   const totalFocus = Math.max(data.focusSec, 1);
-
   container.innerHTML = tags
     .map((item) => {
       const pct = data.focusSec > 0 ? (item.focusSec / totalFocus) * 100 : 0;
       return `
-        <div class="space-y-1.5">
-          <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="font-semibold text-zinc-200 truncate">${escapeHtml(item.tag)}</span>
-              <span class="text-[11px] text-zinc-500">${item.pomosCompleted} completados${item.pomosIncomplete > 0 ? ` · ${item.pomosIncomplete} inc.` : ''}</span>
+        <div class="stack-sm" style="gap:5px;">
+          <div class="row-between" style="font-size:12px;">
+            <div class="row-wrap" style="gap:6px;">
+              <strong>${escapeHtml(item.tag)}</strong>
+              <span class="tiny-text">${item.pomosCompleted} comp.${item.pomosIncomplete > 0 ? ` · ${item.pomosIncomplete} inc.` : ''}</span>
             </div>
-            <div class="flex items-center gap-3 font-mono shrink-0">
-              ${item.pauseSec > 0 ? `<span class="text-[11px] text-amber-400/90" title="Pausas en bloques de esta etiqueta">Pausas: ${formatDurationHuman(item.pauseSec)}</span>` : ''}
-              <span class="text-zinc-200 font-semibold">${formatDurationHuman(item.focusSec)}</span>
-              <span class="text-rose-400 w-11 text-right">${formatPercent(item.focusSec, data.focusSec)}</span>
+            <div class="font-mono row-wrap" style="gap:10px;">
+              ${item.pauseSec > 0 ? `<span style="font-size:11px;color:var(--amber-text);">Pausas: ${formatDurationHuman(item.pauseSec)}</span>` : ''}
+              <strong>${formatDurationHuman(item.focusSec)}</strong>
+              <span style="color:var(--rose-text);min-width:38px;text-align:right;">${formatPercent(item.focusSec, data.focusSec)}</span>
             </div>
           </div>
-          <div class="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
-            <div class="h-full rounded-full bg-rose-500/90 transition-all" style="width:${pct.toFixed(1)}%"></div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" style="width:${pct.toFixed(1)}%;"></div>
           </div>
         </div>
       `;
