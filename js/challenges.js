@@ -1,6 +1,6 @@
 /**
  * =========================================================================
- * RETOS / CASTIGOS ALEATORIOS AL EXCEDER EL DESCANSO CORTO ENTRE POMODOROS
+ * RETOS / CASTIGOS ALEATORIOS AL EXCEDER EL DESCANSO ENTRE POMODOROS
  * =========================================================================
  */
 
@@ -9,6 +9,7 @@ let waitingOverdueInterval = null;
 let activeChallengeModalState = {
   challenge: null,
   isPreview: false,
+  breakAutoEnded: false,
   elapsedSec: 0,
   allowedSec: 0,
 };
@@ -32,23 +33,43 @@ function pickRandomChallenge(excludeId = lastPickedChallengeId) {
 
 /**
  * Calcula si el tiempo transcurrido desde el fin del último Pomodoro
- * excede el descanso permitido (descanso corto, o descanso largo si se completó uno).
+ * excede la duración del descanso correspondiente.
  */
 function getInterPomodoroStatus(nowMs = Date.now()) {
   if (!appState.lastPomodoroEndedAt) {
-    return { active: false, elapsedSec: 0, allowedSec: 0, exceeded: false, overdueSec: 0 };
+    return { active: false, elapsedSec: 0, baseAllowedSec: 0, allowedSec: 0, exceeded: false, overdueSec: 0 };
+  }
+
+  const inBreakWaitingOrPaused =
+    appState.phase === PHASE.READY_BREAK || appState.phase === PHASE.PAUSED_BREAK;
+  const inReadyPomo = appState.phase === PHASE.READY_POMODORO;
+
+  // Solo aplica entre pomodoros (debe existir un siguiente Pomodoro en la carga)
+  const hasNextPomodoro = inReadyPomo || (inBreakWaitingOrPaused && appState.currentPomodoro < appState.config.totalPomodoros);
+  if (!hasNextPomodoro) {
+    return { active: false, elapsedSec: 0, baseAllowedSec: 0, allowedSec: 0, exceeded: false, overdueSec: 0 };
   }
 
   const elapsedSec = Math.max(0, (nowMs - appState.lastPomodoroEndedAt) / 1000);
   const shortBreakSec = getPlannedDurationSec('short_break');
-  const tookLongBreak = appState.lastBreakCompletedType === 'long_break';
-  const tookAnyBreak = Boolean(appState.lastBreakCompletedType);
 
-  const baseAllowedSec = tookLongBreak ? getPlannedDurationSec('long_break') : shortBreakSec;
-  // Pequeño margen de clic (15s en modo normal, 1s en prueba) solo si el usuario realmente completó el descanso
-  const clickGraceSec = tookAnyBreak ? (appState.config.testMode ? 1 : 15) : 0;
+  let tookLongBreak = false;
+  let baseAllowedSec = shortBreakSec;
+  let clickGraceSec = 0;
+
+  if (inBreakWaitingOrPaused) {
+    const expectedType = getCurrentBreakType();
+    tookLongBreak = expectedType === 'long_break';
+    baseAllowedSec = getPlannedDurationSec(expectedType);
+    clickGraceSec = 0;
+  } else {
+    tookLongBreak = appState.lastBreakCompletedType === 'long_break';
+    baseAllowedSec = tookLongBreak ? getPlannedDurationSec('long_break') : shortBreakSec;
+    // Pequeño margen de clic (15s en modo normal, 1s en prueba) solo si el usuario completó el descanso
+    clickGraceSec = appState.lastBreakCompletedType ? (appState.config.testMode ? 1 : 15) : 0;
+  }
+
   const allowedSec = baseAllowedSec + clickGraceSec;
-
   const exceeded = elapsedSec > allowedSec;
   const overdueSec = Math.max(0, elapsedSec - baseAllowedSec);
 
@@ -64,18 +85,53 @@ function getInterPomodoroStatus(nowMs = Date.now()) {
 }
 
 /**
- * Se invoca justo antes de iniciar un Pomodoro.
- * Si se excedió el tiempo de descanso corto y hay retos activos, abre el modal con un reto aleatorio.
- * Devuelve true si interceptó el inicio para mostrar el reto.
+ * Si el tiempo entre Pomodoros ya superó el descanso:
+ * 1. Da por terminado el descanso automáticamente (pasando a READY_POMODORO del siguiente bloque).
+ * 2. Muestra inmediatamente el modal con un reto aleatorio.
+ * Devuelve true si se disparó la acción.
  */
-function checkChallengeBeforeStartPomodoro() {
+function handleInterPomodoroOverdue(forceOpenModal = false, nowMs = Date.now()) {
   if (!userPrefs.challengesEnabled) return false;
   if (!Array.isArray(challengesList) || challengesList.length === 0) return false;
 
-  const status = getInterPomodoroStatus();
-  if (!status.exceeded) return false;
+  const status = getInterPomodoroStatus(nowMs);
+  if (!status.active || !status.exceeded) return false;
 
-  // Reutilizar reto ya sorteado para esta demora si existe, o sortear uno nuevo aleatorio
+  let breakAutoEnded = false;
+
+  // Si aún estaba esperando iniciar el descanso o con el descanso pausado, darlo por terminado
+  if (appState.phase === PHASE.READY_BREAK || appState.phase === PHASE.PAUSED_BREAK) {
+    breakAutoEnded = true;
+
+    // Si el descanso estaba pausado con bloque activo, cerrarlo como incompleto para conservar auditoría
+    if (appState.phase === PHASE.PAUSED_BREAK && appState.activeBlock) {
+      const nowIso = new Date(nowMs).toISOString();
+      if (appState.activeBlock.pauses.length > 0) {
+        const lastPause = appState.activeBlock.pauses[appState.activeBlock.pauses.length - 1];
+        if (lastPause && !lastPause.resumed_at) lastPause.resumed_at = nowIso;
+      }
+      const record = {
+        ...appState.activeBlock,
+        ended_at: nowIso,
+        total_paused_sec: calculateTotalPausedSec(appState.activeBlock.pauses),
+        status: 'incomplete',
+      };
+      historyLogs.unshift(record);
+      saveHistory();
+      appState.activeBlock = null;
+      appState.targetEndTime = null;
+      appState.remainingMsAtPause = null;
+    }
+
+    appState.lastBreakCompletedType = null;
+    appState.currentPomodoro += 1;
+    appState.phase = PHASE.READY_POMODORO;
+    saveState();
+    if (typeof renderApp === 'function') renderApp();
+    if (typeof renderTodaySummary === 'function') renderTodaySummary();
+  }
+
+  // Sortear o recuperar reto pendiente
   let chosen = null;
   if (appState.pendingChallengeId) {
     chosen = challengesList.find((c) => c.id === appState.pendingChallengeId) || null;
@@ -87,15 +143,39 @@ function checkChallengeBeforeStartPomodoro() {
     saveState();
   }
 
-  openChallengeModal(chosen, status, false);
-  return true;
+  const modalEl = document.getElementById('modal-challenge');
+  const isModalAlreadyOpen = modalEl && !modalEl.classList.contains('hidden');
+
+  if (forceOpenModal || (!appState.challengeAutoShown && !isModalAlreadyOpen)) {
+    appState.challengeAutoShown = true;
+    saveState();
+    openChallengeModal(chosen, status, false, breakAutoEnded);
+    return true;
+  }
+
+  return breakAutoEnded;
 }
 
-function openChallengeModal(challenge, statusInfo, isPreview = false) {
+/**
+ * Se invoca justo antes de iniciar un Pomodoro manualmente.
+ * Si se excedió el descanso y hay retos activos, abre el modal con el reto aleatorio.
+ */
+function checkChallengeBeforeStartPomodoro() {
+  if (!userPrefs.challengesEnabled) return false;
+  if (!Array.isArray(challengesList) || challengesList.length === 0) return false;
+
+  const status = getInterPomodoroStatus();
+  if (!status.active || !status.exceeded) return false;
+
+  return handleInterPomodoroOverdue(true);
+}
+
+function openChallengeModal(challenge, statusInfo, isPreview = false, breakAutoEnded = false) {
   if (!challenge) return;
   activeChallengeModalState = {
     challenge,
     isPreview,
+    breakAutoEnded,
     elapsedSec: statusInfo ? statusInfo.elapsedSec : 0,
     allowedSec: statusInfo ? statusInfo.baseAllowedSec : 0,
   };
@@ -110,15 +190,18 @@ function openChallengeModal(challenge, statusInfo, isPreview = false) {
 
   if (isPreview) {
     badgeEl.textContent = 'Vista previa aleatoria';
-    reasonEl.textContent = 'Así aparecerá un reto aleatorio cuando excedas el tiempo de descanso corto entre Pomodoros.';
+    reasonEl.textContent = 'Así aparecerá un reto aleatorio cuando el tiempo entre Pomodoros exceda el descanso.';
     completeBtn.textContent = '¡Listo!';
     skipBtn.classList.add('hidden');
   } else {
     const breakName = statusInfo && statusInfo.tookLongBreak ? 'descanso largo' : 'descanso corto';
-    badgeEl.textContent = 'Descanso excedido';
+    badgeEl.textContent = breakAutoEnded ? 'Descanso terminado · Reto' : 'Descanso excedido';
+    const prefix = breakAutoEnded
+      ? `El ${breakName} se dio por terminado porque pasaron `
+      : 'Pasaron ';
     reasonEl.innerHTML =
-      `Pasaron <strong class="font-mono">${formatDurationHuman(statusInfo.elapsedSec)}</strong> desde tu último Pomodoro ` +
-      `(límite de ${breakName}: <strong class="font-mono">${formatDurationHuman(statusInfo.baseAllowedSec)}</strong>). ¡Cumple este reto para retomar el ritmo!`;
+      `${prefix}<strong class="font-mono">${formatDurationHuman(statusInfo.elapsedSec)}</strong> desde tu último Pomodoro ` +
+      `(límite: <strong class="font-mono">${formatDurationHuman(statusInfo.baseAllowedSec)}</strong>). ¡Cumple este reto para iniciar el Pomodoro ${appState.currentPomodoro}/${appState.config.totalPomodoros}!`;
     completeBtn.textContent = '¡Reto cumplido! Iniciar Pomodoro';
     skipBtn.classList.remove('hidden');
   }
@@ -166,7 +249,9 @@ function completeChallengeAndStart() {
   }
 
   appState.pendingChallengeId = null;
+  appState.challengeAutoShown = false;
   saveState();
+  if (currentMainTab !== 'focus') switchTab('focus');
   showToast(`¡Reto cumplido (${title})! Arrancando Pomodoro.`, 'success');
   startPomodoro(true);
 }
@@ -176,8 +261,10 @@ function skipChallengeAndStart() {
   if (activeChallengeModalState.isPreview) return;
 
   appState.pendingChallengeId = null;
+  appState.challengeAutoShown = false;
   saveState();
   triggerHaptic(10);
+  if (currentMainTab !== 'focus') switchTab('focus');
   showToast('Reto omitido. Iniciando Pomodoro.', 'info');
   startPomodoro(true);
 }
@@ -188,31 +275,42 @@ function previewRandomChallenge() {
     return;
   }
   const chosen = pickRandomChallenge();
-  openChallengeModal(chosen, null, true);
+  openChallengeModal(chosen, null, true, false);
 }
 
 // =========================================================================
-// INDICADOR EN VIVO EN PANTALLA DE ESPERA (READY_BREAK / READY_POMODORO)
+// VIGILANCIA EN VIVO (CIERRA EL DESCANSO Y MUESTRA EL RETO AUTOMÁTICAMENTE)
 // =========================================================================
 
 function startWaitingOverdueWatcher() {
   stopWaitingOverdueWatcher();
   const isWaiting =
-    (appState.phase === PHASE.READY_BREAK || appState.phase === PHASE.READY_POMODORO) &&
+    (appState.phase === PHASE.READY_BREAK ||
+      appState.phase === PHASE.PAUSED_BREAK ||
+      appState.phase === PHASE.READY_POMODORO) &&
     Boolean(appState.lastPomodoroEndedAt);
 
+  if (!isWaiting) {
+    renderOverdueBanner();
+    return;
+  }
+
+  // Verificar inmediatamente (ej. al volver a la pestaña tras varios minutos)
+  handleInterPomodoroOverdue(false);
   renderOverdueBanner();
-  if (!isWaiting) return;
 
   waitingOverdueInterval = setInterval(() => {
     const stillWaiting =
-      (appState.phase === PHASE.READY_BREAK || appState.phase === PHASE.READY_POMODORO) &&
+      (appState.phase === PHASE.READY_BREAK ||
+        appState.phase === PHASE.PAUSED_BREAK ||
+        appState.phase === PHASE.READY_POMODORO) &&
       Boolean(appState.lastPomodoroEndedAt);
     if (!stillWaiting) {
       stopWaitingOverdueWatcher();
       renderOverdueBanner();
       return;
     }
+    handleInterPomodoroOverdue(false);
     renderOverdueBanner();
   }, 1000);
 }
@@ -229,7 +327,10 @@ function renderOverdueBanner() {
   const textEl = document.getElementById('overdue-challenge-text');
   if (!banner || !textEl) return;
 
-  const isWaiting = appState.phase === PHASE.READY_BREAK || appState.phase === PHASE.READY_POMODORO;
+  const isWaiting =
+    appState.phase === PHASE.READY_BREAK ||
+    appState.phase === PHASE.PAUSED_BREAK ||
+    appState.phase === PHASE.READY_POMODORO;
   if (!isWaiting || !userPrefs.challengesEnabled || challengesList.length === 0) {
     banner.classList.add('hidden');
     return;
@@ -243,7 +344,7 @@ function renderOverdueBanner() {
 
   banner.classList.remove('hidden');
   textEl.textContent =
-    `Tiempo entre Pomodoros: ${formatDurationHuman(status.elapsedSec)} (+${formatDurationHuman(status.overdueSec)}). Se activará un reto aleatorio al iniciar.`;
+    `Tiempo entre Pomodoros: ${formatDurationHuman(status.elapsedSec)} (+${formatDurationHuman(status.overdueSec)}). Toca "Iniciar Pomodoro" para ver tu reto.`;
 }
 
 // =========================================================================

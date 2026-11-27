@@ -4,7 +4,7 @@
  * =========================================================================
  */
 
-const CACHE_NAME = 'pomodoro-pro-shell-v3';
+const CACHE_NAME = 'pomodoro-pro-shell-v4';
 
 const CORE_ASSETS = [
   './',

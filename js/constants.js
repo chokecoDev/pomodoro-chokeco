@@ -113,5 +113,6 @@ function createDefaultState(prefs = createDefaultPrefs()) {
     lastPomodoroEndedAt: null,
     lastBreakCompletedType: null,
     pendingChallengeId: null,
+    challengeAutoShown: false,
   };
 }

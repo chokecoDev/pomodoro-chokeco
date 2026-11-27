@@ -103,7 +103,8 @@ function onAppResumeSync() {
   if (appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.RUNNING_BREAK) {
     onTick();
     syncWakeLock();
-  } else if (typeof renderOverdueBanner === 'function') {
+  } else if (typeof handleInterPomodoroOverdue === 'function') {
+    handleInterPomodoroOverdue(false);
     renderOverdueBanner();
   }
   if (currentMainTab === 'today') renderTodayView();

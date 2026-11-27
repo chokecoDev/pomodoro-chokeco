@@ -217,6 +217,7 @@ function prepareBatch() {
     lastPomodoroEndedAt: null,
     lastBreakCompletedType: null,
     pendingChallengeId: null,
+    challengeAutoShown: false,
   };
 
   if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
@@ -246,6 +247,7 @@ function startPomodoro(bypassChallenge = false) {
   appState.lastPomodoroEndedAt = null;
   appState.lastBreakCompletedType = null;
   appState.pendingChallengeId = null;
+  appState.challengeAutoShown = false;
 
   appState.activeBlock = {
     id: generateId('log'),
@@ -275,7 +277,11 @@ function startPomodoro(bypassChallenge = false) {
 
 function startBreak() {
   if (appState.phase !== PHASE.READY_BREAK) return;
+  if (typeof handleInterPomodoroOverdue === 'function' && handleInterPomodoroOverdue(true)) {
+    return;
+  }
   getAudioContext();
+  if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
 
   const breakType = getCurrentBreakType();
   const durationSec = getPlannedDurationSec(breakType);
@@ -435,6 +441,7 @@ function completeCurrentBlock(exactEndTimeMs) {
     appState.lastPomodoroEndedAt = endMs;
     appState.lastBreakCompletedType = null;
     appState.pendingChallengeId = null;
+    appState.challengeAutoShown = false;
     playPomodoroCompleteSound();
     appState.phase = PHASE.READY_BREAK;
     saveState();
@@ -465,6 +472,7 @@ function advanceAfterBreak() {
     appState.lastPomodoroEndedAt = null;
     appState.lastBreakCompletedType = null;
     appState.pendingChallengeId = null;
+    appState.challengeAutoShown = false;
     if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
   } else {
     appState.currentPomodoro += 1;
@@ -533,6 +541,7 @@ function confirmStopBlock(action) {
       appState.lastPomodoroEndedAt = nowMs;
       appState.lastBreakCompletedType = null;
       appState.pendingChallengeId = null;
+      appState.challengeAutoShown = false;
       appState.phase = PHASE.READY_BREAK;
       saveState();
       renderApp();
@@ -582,6 +591,7 @@ function resetToSetup() {
   appState.lastPomodoroEndedAt = null;
   appState.lastBreakCompletedType = null;
   appState.pendingChallengeId = null;
+  appState.challengeAutoShown = false;
   saveState();
   syncSetupInputsFromConfig();
   renderApp();
