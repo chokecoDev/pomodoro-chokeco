@@ -103,6 +103,8 @@ function onAppResumeSync() {
   if (appState.phase === PHASE.RUNNING_POMODORO || appState.phase === PHASE.RUNNING_BREAK) {
     onTick();
     syncWakeLock();
+  } else if (typeof renderOverdueBanner === 'function') {
+    renderOverdueBanner();
   }
   if (currentMainTab === 'today') renderTodayView();
   if (currentMainTab === 'habits') renderHabitsView();

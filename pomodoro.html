@@ -241,6 +241,17 @@
           </label>
         </div>
 
+        <!-- Acceso rápido a retos entre Pomodoros -->
+        <div class="card-inset row-between">
+          <div>
+            <div style="font-size:13px;font-weight:600;">🔥 Retos si excedes el descanso corto</div>
+            <div class="tiny-text">Reto físico aleatorio al tardar más que tu descanso corto.</div>
+          </div>
+          <button type="button" onclick="switchTab('progress'); switchProgressSubTab('settings');" class="btn btn-sm btn-secondary">
+            Gestionar retos
+          </button>
+        </div>
+
         <div class="row-between" style="padding-top:10px;border-top:1px solid var(--border-subtle);">
           <p id="setup-summary" class="muted-text" style="margin:0;">4 pomodoros de 25 min · Descansos 5 / 15 min</p>
           <button type="button" onclick="prepareBatch()" class="btn btn-lg btn-primary">
@@ -270,6 +281,15 @@
             <div id="active-task-title" style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
           </div>
           <span class="badge badge-rose">Vinculada</span>
+        </div>
+
+        <!-- Aviso en vivo cuando el tiempo entre Pomodoros excede el descanso corto -->
+        <div id="overdue-challenge-banner" class="rollover-banner hidden" style="padding:11px 14px;gap:4px;">
+          <div class="row-between">
+            <strong style="font-size:12px;color:var(--amber-text);">🔥 Descanso corto excedido · Reto pendiente</strong>
+            <span class="badge badge-amber">Aleatorio</span>
+          </div>
+          <p id="overdue-challenge-text" class="tiny-text" style="margin:0;color:var(--text-primary);"></p>
         </div>
 
         <!-- Cambio rápido de tarea cuando el bloque aún no ha arrancado -->
@@ -783,6 +803,46 @@
           <div id="settings-habits-list" style="margin-top:4px;"></div>
         </div>
 
+        <!-- Gestión de retos / castigos aleatorios entre Pomodoros -->
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div>
+              <h3 class="section-title">Retos / Castigos entre Pomodoros</h3>
+              <p class="section-subtitle">Aparece un reto aleatorio si tardas más que tu descanso corto antes del siguiente Pomodoro.</p>
+            </div>
+            <span id="settings-challenges-count" class="badge badge-amber font-mono">5 retos</span>
+          </div>
+
+          <div class="list-row" style="padding-top:4px;">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Activar retos automáticos</div>
+              <div class="tiny-text">Se dispara solo cuando excedes el tiempo de descanso corto.</div>
+            </div>
+            <label class="switch switch-amber">
+              <input type="checkbox" id="setting-challenges-enabled" onchange="onSettingToggle('challengesEnabled', this)" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <form onsubmit="addNewChallenge(event)" class="stack-sm" style="margin-top:4px;">
+            <div class="row-wrap" style="gap:8px;">
+              <input type="text" id="new-challenge-icon" value="🔥" maxlength="4" class="input" style="width:54px;text-align:center;" aria-label="Ícono del reto" />
+              <input type="text" id="new-challenge-title" maxlength="60" placeholder="Ej. 15 abdominales, 10 burpees..." class="input" style="flex:1;min-width:160px;" />
+            </div>
+            <div class="row-wrap" style="gap:8px;">
+              <input type="text" id="new-challenge-desc" maxlength="100" placeholder="Descripción opcional (ej. Para reactivar el cuerpo)" class="input" style="flex:1;min-width:160px;font-size:13px;" />
+              <button type="submit" class="btn btn-primary">Agregar</button>
+            </div>
+          </form>
+
+          <div id="settings-challenges-list" style="margin-top:4px;"></div>
+
+          <div class="row-wrap" style="margin-top:6px;">
+            <button type="button" onclick="previewRandomChallenge()" class="btn btn-sm btn-secondary">🎲 Probar reto aleatorio</button>
+            <button type="button" onclick="restoreDefaultChallenges()" class="btn btn-sm btn-ghost">Restaurar 5 retos iniciales</button>
+          </div>
+        </div>
+
         <!-- Zona peligrosa -->
         <div class="card row-between" style="border-color:var(--danger-border);">
           <div>
@@ -921,6 +981,36 @@
     </div>
   </div>
 
+  <!-- Modal: Reto / Castigo aleatorio por exceder descanso corto -->
+  <div id="modal-challenge" class="modal-backdrop hidden">
+    <div class="modal-sheet stack-md" style="border-color:var(--amber-border);">
+      <div class="sheet-handle"></div>
+      <div class="row-between">
+        <span id="challenge-modal-badge" class="badge badge-amber">Descanso excedido</span>
+        <button id="challenge-reroll-btn" type="button" onclick="rerollChallenge()" class="btn btn-sm btn-ghost" title="Sortear otro reto aleatorio">
+          🎲 Otro reto
+        </button>
+      </div>
+
+      <p id="challenge-modal-reason" class="muted-text" style="margin:0;"></p>
+
+      <div class="card-inset" style="text-align:center;padding:22px 16px;border-color:var(--rose-border);background:var(--rose-soft);">
+        <div id="challenge-modal-icon" style="font-size:44px;line-height:1;margin-bottom:10px;">🔥</div>
+        <h3 id="challenge-modal-title" class="section-title" style="font-size:21px;">10 burpees</h3>
+        <p id="challenge-modal-desc" class="muted-text" style="margin:6px 0 0;"></p>
+      </div>
+
+      <div class="stack-sm">
+        <button id="challenge-complete-btn" type="button" onclick="completeChallengeAndStart()" class="btn btn-lg btn-primary btn-block">
+          ¡Reto cumplido! Iniciar Pomodoro
+        </button>
+        <button id="challenge-skip-btn" type="button" onclick="skipChallengeAndStart()" class="btn btn-secondary btn-block">
+          Omitir esta vez e iniciar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Detener bloque en curso -->
   <div id="modal-stop" class="modal-backdrop hidden">
     <div class="modal-sheet stack-md">
@@ -1004,6 +1094,7 @@
   <script src="js/audio.js"></script>
   <script src="js/ui-helpers.js"></script>
   <script src="js/tasks.js"></script>
+  <script src="js/challenges.js"></script>
   <script src="js/timer.js"></script>
   <script src="js/habits.js"></script>
   <script src="js/progress.js"></script>

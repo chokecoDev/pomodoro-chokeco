@@ -12,6 +12,7 @@ const STORAGE_KEY_TASKS = 'pomodoro_pro_tasks_v1';
 const STORAGE_KEY_HABITS = 'pomodoro_pro_habits_v1';
 const STORAGE_KEY_HABIT_LOGS = 'pomodoro_pro_habit_logs_v1';
 const STORAGE_KEY_SHUTDOWNS = 'pomodoro_pro_shutdowns_v1';
+const STORAGE_KEY_CHALLENGES = 'pomodoro_pro_challenges_v1';
 
 // IndexedDB local-first
 const IDB_NAME = 'PomodoroProDB';
@@ -65,12 +66,21 @@ const DEFAULT_HABITS = [
   { id: 'hab_plan', name: 'Revisar Top 3 del día', icon: '🎯', createdAt: '2026-01-01' },
 ];
 
+const DEFAULT_CHALLENGES = [
+  { id: 'chal_burpees', icon: '🔥', title: '10 burpees', description: 'Activa el cuerpo y recupera el ritmo al instante.' },
+  { id: 'chal_squats', icon: '🦵', title: '20 sentadillas', description: 'Activa piernas y circulación para despejar la mente.' },
+  { id: 'chal_pushups', icon: '💪', title: '15 flexiones (lagartijas)', description: 'Clásicas o apoyando rodillas, manteniendo buena postura.' },
+  { id: 'chal_plank', icon: '⏱️', title: '45 segundos de plancha', description: 'Abdomen firme y respiración profunda antes de volver.' },
+  { id: 'chal_jacks', icon: '⚡', title: '30 jumping jacks', description: 'Saltos de tijera rápidos para subir energía y enfoque.' },
+];
+
 function createDefaultPrefs() {
   return {
     soundEnabled: true,
     hapticsEnabled: true,
     wakeLockEnabled: false,
     notificationsEnabled: false,
+    challengesEnabled: true,
     theme: 'dark', // 'dark' | 'light'
     defaultPomodoroMin: 25,
     defaultShortBreakMin: 5,
@@ -100,5 +110,8 @@ function createDefaultState(prefs = createDefaultPrefs()) {
     targetEndTime: null,
     remainingMsAtPause: null,
     activeBlock: null,
+    lastPomodoroEndedAt: null,
+    lastBreakCompletedType: null,
+    pendingChallengeId: null,
   };
 }

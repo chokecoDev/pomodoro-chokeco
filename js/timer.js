@@ -214,8 +214,12 @@ function prepareBatch() {
     targetEndTime: null,
     remainingMsAtPause: null,
     activeBlock: null,
+    lastPomodoroEndedAt: null,
+    lastBreakCompletedType: null,
+    pendingChallengeId: null,
   };
 
+  if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
   saveState();
   triggerHaptic(14);
   renderApp();
@@ -226,12 +230,22 @@ function prepareBatch() {
 // MÁQUINA DE ESTADOS — TRANSICIONES ESTRICTAMENTE MANUALES
 // =========================================================================
 
-function startPomodoro() {
+function startPomodoro(bypassChallenge = false) {
   if (appState.phase !== PHASE.READY_POMODORO) return;
+
+  if (!bypassChallenge && typeof checkChallengeBeforeStartPomodoro === 'function') {
+    if (checkChallengeBeforeStartPomodoro()) return;
+  }
+
   getAudioContext();
+  if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
 
   const durationSec = getPlannedDurationSec('pomodoro');
   const nowIso = new Date().toISOString();
+
+  appState.lastPomodoroEndedAt = null;
+  appState.lastBreakCompletedType = null;
+  appState.pendingChallengeId = null;
 
   appState.activeBlock = {
     id: generateId('log'),
@@ -390,6 +404,7 @@ function completeCurrentBlock(exactEndTimeMs) {
 
   const endMs = exactEndTimeMs || Date.now();
   const wasPomodoro = appState.phase === PHASE.RUNNING_POMODORO;
+  const completedType = appState.activeBlock ? appState.activeBlock.type : null;
 
   if (appState.activeBlock) {
     const pausedSec = calculateTotalPausedSec(appState.activeBlock.pauses);
@@ -417,6 +432,9 @@ function completeCurrentBlock(exactEndTimeMs) {
 
   if (wasPomodoro) {
     appState.completedPomodorosInBatch += 1;
+    appState.lastPomodoroEndedAt = endMs;
+    appState.lastBreakCompletedType = null;
+    appState.pendingChallengeId = null;
     playPomodoroCompleteSound();
     appState.phase = PHASE.READY_BREAK;
     saveState();
@@ -429,6 +447,7 @@ function completeCurrentBlock(exactEndTimeMs) {
     }
     showToast('¡Pomodoro completado! Listo para iniciar descanso.', 'success');
   } else {
+    appState.lastBreakCompletedType = completedType || 'short_break';
     playBreakCompleteSound();
     advanceAfterBreak();
     renderTodaySummary();
@@ -443,6 +462,10 @@ function completeCurrentBlock(exactEndTimeMs) {
 function advanceAfterBreak() {
   if (appState.currentPomodoro >= appState.config.totalPomodoros) {
     appState.phase = PHASE.BATCH_COMPLETED;
+    appState.lastPomodoroEndedAt = null;
+    appState.lastBreakCompletedType = null;
+    appState.pendingChallengeId = null;
+    if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
   } else {
     appState.currentPomodoro += 1;
     appState.phase = PHASE.READY_POMODORO;
@@ -507,6 +530,9 @@ function confirmStopBlock(action) {
     appState.remainingMsAtPause = null;
 
     if (isPomodoro) {
+      appState.lastPomodoroEndedAt = nowMs;
+      appState.lastBreakCompletedType = null;
+      appState.pendingChallengeId = null;
       appState.phase = PHASE.READY_BREAK;
       saveState();
       renderApp();
@@ -545,6 +571,7 @@ function confirmCancelBatch() {
 function resetToSetup() {
   stopTicking();
   releaseWakeLock();
+  if (typeof stopWaitingOverdueWatcher === 'function') stopWaitingOverdueWatcher();
   appState.phase = PHASE.SETUP;
   appState.activeBlock = null;
   appState.targetEndTime = null;
@@ -552,6 +579,9 @@ function resetToSetup() {
   appState.batchId = null;
   appState.currentPomodoro = 1;
   appState.completedPomodorosInBatch = 0;
+  appState.lastPomodoroEndedAt = null;
+  appState.lastBreakCompletedType = null;
+  appState.pendingChallengeId = null;
   saveState();
   syncSetupInputsFromConfig();
   renderApp();
@@ -838,6 +868,7 @@ function renderApp() {
   }
 
   renderBatchBlocksIndicator();
+  if (typeof startWaitingOverdueWatcher === 'function') startWaitingOverdueWatcher();
 }
 
 function renderBatchBlocksIndicator() {

@@ -4,7 +4,7 @@
  * =========================================================================
  */
 
-const CACHE_NAME = 'pomodoro-pro-shell-v2';
+const CACHE_NAME = 'pomodoro-pro-shell-v3';
 
 const CORE_ASSETS = [
   './',
@@ -17,6 +17,7 @@ const CORE_ASSETS = [
   './js/audio.js',
   './js/ui-helpers.js',
   './js/tasks.js',
+  './js/challenges.js',
   './js/timer.js',
   './js/habits.js',
   './js/progress.js',

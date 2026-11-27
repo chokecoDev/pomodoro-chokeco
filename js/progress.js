@@ -229,6 +229,7 @@ function renderRecentShutdowns(shutdowns) {
 function renderSettingsPanel() {
   syncSettingsUi();
   renderHabitsManagerList();
+  if (typeof renderChallengesManagerList === 'function') renderChallengesManagerList();
 }
 
 function syncSettingsUi() {
@@ -256,6 +257,7 @@ function syncSettingsUi() {
   setChk('setting-haptics', userPrefs.hapticsEnabled);
   setChk('setting-wake-lock', userPrefs.wakeLockEnabled);
   setChk('setting-notifications', userPrefs.notificationsEnabled);
+  setChk('setting-challenges-enabled', userPrefs.challengesEnabled);
 
   const persistBadge = document.getElementById('storage-persist-badge');
   if (persistBadge) {
@@ -330,6 +332,9 @@ function onSettingToggle(key, checkboxEl) {
       if (el) el.checked = checked;
     });
     syncWakeLock();
+  }
+  if (key === 'challengesEnabled' && typeof renderOverdueBanner === 'function') {
+    renderOverdueBanner();
   }
   triggerHaptic(10);
 }

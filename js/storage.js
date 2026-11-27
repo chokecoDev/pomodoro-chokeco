@@ -11,6 +11,7 @@ let tasksList = [];
 let habitsList = [];
 let habitLogs = {}; // { 'YYYY-MM-DD': ['habit_id_1', ...] }
 let shutdownsMap = {}; // { 'YYYY-MM-DD': { dateKey, mood, note, summary, savedAt } }
+let challengesList = [];
 
 // Estado volátil de UI y reloj
 let tickInterval = null;
@@ -126,6 +127,10 @@ function saveShutdowns() {
   persistKey(STORAGE_KEY_SHUTDOWNS, shutdownsMap);
 }
 
+function saveChallenges() {
+  persistKey(STORAGE_KEY_CHALLENGES, challengesList);
+}
+
 function saveAllStores() {
   savePrefs();
   saveState();
@@ -134,6 +139,7 @@ function saveAllStores() {
   saveHabits();
   saveHabitLogs();
   saveShutdowns();
+  saveChallenges();
 }
 
 // =========================================================================
@@ -173,6 +179,14 @@ function loadAllDataSync() {
 
   const savedShutdowns = readJsonLocal(STORAGE_KEY_SHUTDOWNS, null);
   shutdownsMap = savedShutdowns && typeof savedShutdowns === 'object' ? savedShutdowns : {};
+
+  const savedChallenges = readJsonLocal(STORAGE_KEY_CHALLENGES, null);
+  if (Array.isArray(savedChallenges)) {
+    challengesList = savedChallenges;
+  } else {
+    challengesList = DEFAULT_CHALLENGES.map((c) => ({ ...c }));
+    saveChallenges();
+  }
 
   const savedState = readJsonLocal(STORAGE_KEY_STATE, null);
   const baseState = createDefaultState(userPrefs);
@@ -233,6 +247,11 @@ async function hydrateFromIndexedDbIfNeeded() {
       localStorage.setItem(STORAGE_KEY_SHUTDOWNS, JSON.stringify(shutdownsMap));
       recovered = true;
     }
+    if (Array.isArray(idbData[STORAGE_KEY_CHALLENGES])) {
+      challengesList = idbData[STORAGE_KEY_CHALLENGES];
+      localStorage.setItem(STORAGE_KEY_CHALLENGES, JSON.stringify(challengesList));
+      recovered = true;
+    }
     if (idbData[STORAGE_KEY_STATE] && idbData[STORAGE_KEY_STATE].phase) {
       const baseState = createDefaultState(userPrefs);
       appState = {
@@ -284,6 +303,7 @@ function buildFullBackupPayload() {
       habits: habitsList,
       habitLogs: habitLogs,
       shutdowns: shutdownsMap,
+      challenges: challengesList,
       historyLogs: historyLogs,
     },
   };
@@ -313,6 +333,7 @@ function validateBackupPayload(rawObj) {
         habits: habitsList,
         habitLogs: habitLogs,
         shutdowns: shutdownsMap,
+        challenges: challengesList,
         historyLogs: rawObj,
       },
     };
@@ -357,6 +378,7 @@ function validateBackupPayload(rawObj) {
       habits: d.habits,
       habitLogs: d.habitLogs || {},
       shutdowns: d.shutdowns || {},
+      challenges: Array.isArray(d.challenges) ? d.challenges : challengesList,
       historyLogs: d.historyLogs,
     },
   };
@@ -370,6 +392,7 @@ function applyValidatedBackup(normalized) {
   habitsList = normalized.habits;
   habitLogs = normalized.habitLogs;
   shutdownsMap = normalized.shutdowns;
+  challengesList = Array.isArray(normalized.challenges) ? normalized.challenges : DEFAULT_CHALLENGES.map((c) => ({ ...c }));
   historyLogs = normalized.historyLogs;
   saveAllStores();
 }
@@ -384,5 +407,6 @@ function clearAllAppData() {
   habitsList = DEFAULT_HABITS.map((h) => ({ ...h, createdAt: getTodayKey() }));
   habitLogs = {};
   shutdownsMap = {};
+  challengesList = DEFAULT_CHALLENGES.map((c) => ({ ...c }));
   saveAllStores();
 }
